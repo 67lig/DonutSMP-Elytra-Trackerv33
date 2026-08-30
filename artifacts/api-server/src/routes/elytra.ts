@@ -13,7 +13,7 @@ import {
   AnalyzeElytraListingResponse,
 } from "@workspace/api-zod";
 import { elytraMarketService } from "../lib/elytra-market";
-import { analyzeElytraListing, GEMINI_ANALYSIS_LIMIT, getGeminiUsage } from "../lib/gemini-analysis";
+import { analyzeElytraListing, analyzeElytraMarket, GEMINI_ANALYSIS_LIMIT, getGeminiUsage } from "../lib/gemini-analysis";
 
 const router: IRouter = Router();
 
@@ -90,6 +90,25 @@ router.post("/elytra/analyze", async (req, res): Promise<void> => {
       return;
     }
     const message = error instanceof Error ? error.message : "Gemini analysis failed";
+    res.status(502).json({ error: message, usage: getGeminiUsage() });
+  }
+});
+
+router.post("/elytra/analyze-market", async (_req, res): Promise<void> => {
+  if (getGeminiUsage().used >= GEMINI_ANALYSIS_LIMIT) {
+    res.status(429).json({ error: "Gemini analysis limit reached", usage: getGeminiUsage() });
+    return;
+  }
+  try {
+    const context = await elytraMarketService.getMarketAnalysisContext();
+    const data = await analyzeElytraMarket(context);
+    res.json(data);
+  } catch (error) {
+    if (error instanceof Error && error.name === "GeminiAnalysisLimitError") {
+      res.status(429).json({ error: error.message, usage: getGeminiUsage() });
+      return;
+    }
+    const message = error instanceof Error ? error.message : "Gemini market analysis failed";
     res.status(502).json({ error: message, usage: getGeminiUsage() });
   }
 });

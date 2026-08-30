@@ -148,6 +148,23 @@ paths:
           description: Gemini analysis limit reached
         "502":
           description: Gemini analysis failed
+  /elytra/analyze-market:
+    post:
+      operationId: analyzeElytraMarket
+      tags: [elytra]
+      summary: Ask Gemini for a market-level buy decision
+      description: Sends DonutSMP auction pages one and two plus the last hour of stored price history to Gemini.
+      responses:
+        "200":
+          description: Gemini market recommendation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ElytraMarketAnalysisResponse"
+        "429":
+          description: Gemini analysis limit reached
+        "502":
+          description: Gemini analysis failed
 components:
   parameters:
     Category:
@@ -183,7 +200,7 @@ components:
       enum: [elytra]
     TimeRange:
       type: string
-      enum: [five_minutes, today, seven_days, thirty_days, ninety_days, one_year, all_time]
+      enum: [five_minutes, hour, today, seven_days, thirty_days, ninety_days, one_year, all_time]
     ElytraStats:
       type: object
       properties:
@@ -393,4 +410,64 @@ components:
               type: number
           required: [used, remaining, limit]
       required: [listing, recommendation, confidence, summary, reasons, risks, marketContext, usage]
+    ElytraMarketAnalysisResponse:
+      type: object
+      properties:
+        recommendation:
+          type: string
+          enum: [YES, NO]
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 100
+        summary:
+          type: string
+        reasons:
+          type: array
+          items:
+            type: string
+        risks:
+          type: array
+          items:
+            type: string
+        marketContext:
+          type: object
+          properties:
+            lowest:
+              type: ["number", "null"]
+            median:
+              type: ["number", "null"]
+            average:
+              type: ["number", "null"]
+            priceChange:
+              type: ["number", "null"]
+            activeListings:
+              type: number
+            recentPrices:
+              type: array
+              items:
+                type: number
+          required: [lowest, median, average, priceChange, activeListings, recentPrices]
+        source:
+          type: object
+          properties:
+            auctionPages:
+              type: array
+              items:
+                type: number
+            historyRange:
+              type: string
+              enum: [hour]
+          required: [auctionPages, historyRange]
+        usage:
+          type: object
+          properties:
+            used:
+              type: number
+            remaining:
+              type: number
+            limit:
+              type: number
+          required: [used, remaining, limit]
+      required: [recommendation, confidence, summary, reasons, risks, marketContext, source, usage]
 

@@ -24,6 +24,7 @@ import type {
   ElytraAnalysisResponse,
   ElytraDashboard,
   ElytraListing,
+  ElytraMarketAnalysisResponse,
   ElytraTransaction,
   GetElytraAlertsParams,
   GetElytraHistoryParams,
@@ -623,5 +624,77 @@ export const useAnalyzeElytraListing = <TError = ErrorType<void>,
         TContext
       > => {
       return useMutation(getAnalyzeElytraListingMutationOptions(options));
+    }
+
+export const getAnalyzeElytraMarketUrl = () => {
+
+
+
+
+  return `/api/elytra/analyze-market`
+}
+
+/**
+ * Sends DonutSMP auction pages one and two plus the last hour of stored price history to Gemini.
+ * @summary Ask Gemini for a market-level buy decision
+ */
+export const analyzeElytraMarket = async ( options?: Parameters<typeof customFetch>[1]): Promise<ElytraMarketAnalysisResponse> => {
+
+  return customFetch<ElytraMarketAnalysisResponse>(getAnalyzeElytraMarketUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getAnalyzeElytraMarketMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof analyzeElytraMarket>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof analyzeElytraMarket>>, TError,void, TContext> => {
+
+const mutationKey = ['analyzeElytraMarket'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof analyzeElytraMarket>>, void> = () => {
+
+
+          return  analyzeElytraMarket(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AnalyzeElytraMarketMutationResult = NonNullable<Awaited<ReturnType<typeof analyzeElytraMarket>>>
+
+    export type AnalyzeElytraMarketMutationError = ErrorType<void>
+
+    /**
+ * @summary Ask Gemini for a market-level buy decision
+ */
+export const useAnalyzeElytraMarket = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof analyzeElytraMarket>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof analyzeElytraMarket>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getAnalyzeElytraMarketMutationOptions(options));
     }
 

@@ -21,6 +21,7 @@ export type TimeRange = typeof TimeRange[keyof typeof TimeRange];
 
 export const TimeRange = {
   five_minutes: 'five_minutes',
+  hour: 'hour',
   today: 'today',
   seven_days: 'seven_days',
   thirty_days: 'thirty_days',
@@ -173,6 +174,60 @@ export interface ElytraAnalysisResponse {
   risks: string[];
   marketContext: ElytraAnalysisResponseMarketContext;
   usage: ElytraAnalysisResponseUsage;
+}
+
+export type ElytraMarketAnalysisResponseRecommendation = typeof ElytraMarketAnalysisResponseRecommendation[keyof typeof ElytraMarketAnalysisResponseRecommendation];
+
+
+export const ElytraMarketAnalysisResponseRecommendation = {
+  YES: 'YES',
+  NO: 'NO',
+} as const;
+
+export type ElytraMarketAnalysisResponseMarketContext = {
+  /** @nullable */
+  lowest: number | null;
+  /** @nullable */
+  median: number | null;
+  /** @nullable */
+  average: number | null;
+  /** @nullable */
+  priceChange: number | null;
+  activeListings: number;
+  recentPrices: number[];
+};
+
+export type ElytraMarketAnalysisResponseSourceHistoryRange = typeof ElytraMarketAnalysisResponseSourceHistoryRange[keyof typeof ElytraMarketAnalysisResponseSourceHistoryRange];
+
+
+export const ElytraMarketAnalysisResponseSourceHistoryRange = {
+  hour: 'hour',
+} as const;
+
+export type ElytraMarketAnalysisResponseSource = {
+  auctionPages: number[];
+  historyRange: ElytraMarketAnalysisResponseSourceHistoryRange;
+};
+
+export type ElytraMarketAnalysisResponseUsage = {
+  used: number;
+  remaining: number;
+  limit: number;
+};
+
+export interface ElytraMarketAnalysisResponse {
+  recommendation: ElytraMarketAnalysisResponseRecommendation;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  confidence: number;
+  summary: string;
+  reasons: string[];
+  risks: string[];
+  marketContext: ElytraMarketAnalysisResponseMarketContext;
+  source: ElytraMarketAnalysisResponseSource;
+  usage: ElytraMarketAnalysisResponseUsage;
 }
 
 export type CategoryParameter = ElytraCategory;

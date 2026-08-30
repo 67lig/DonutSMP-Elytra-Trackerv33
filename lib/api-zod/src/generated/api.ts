@@ -49,7 +49,7 @@ export const GetElytraDashboardResponse = zod.object({
  */
 export const GetElytraHistoryQueryParams = zod.object({
   "category": zod.enum(['elytra']).optional(),
-  "range": zod.enum(['five_minutes', 'today', 'seven_days', 'thirty_days', 'ninety_days', 'one_year', 'all_time']).optional()
+  "range": zod.enum(['five_minutes', 'hour', 'today', 'seven_days', 'thirty_days', 'ninety_days', 'one_year', 'all_time']).optional()
 })
 
 export const GetElytraHistoryResponseItem = zod.object({
@@ -185,6 +185,41 @@ export const AnalyzeElytraListingResponse = zod.object({
   "priceChange": zod.number().nullable(),
   "activeListings": zod.number(),
   "recentPrices": zod.array(zod.number())
+}),
+  "usage": zod.object({
+  "used": zod.number(),
+  "remaining": zod.number(),
+  "limit": zod.number()
+})
+})
+
+
+/**
+ * Sends DonutSMP auction pages one and two plus the last hour of stored price history to Gemini.
+ * @summary Ask Gemini for a market-level buy decision
+ */
+export const analyzeElytraMarketResponseConfidenceMin = 0;
+export const analyzeElytraMarketResponseConfidenceMax = 100;
+
+
+
+export const AnalyzeElytraMarketResponse = zod.object({
+  "recommendation": zod.enum(['YES', 'NO']),
+  "confidence": zod.number().min(analyzeElytraMarketResponseConfidenceMin).max(analyzeElytraMarketResponseConfidenceMax),
+  "summary": zod.string(),
+  "reasons": zod.array(zod.string()),
+  "risks": zod.array(zod.string()),
+  "marketContext": zod.object({
+  "lowest": zod.number().nullable(),
+  "median": zod.number().nullable(),
+  "average": zod.number().nullable(),
+  "priceChange": zod.number().nullable(),
+  "activeListings": zod.number(),
+  "recentPrices": zod.array(zod.number())
+}),
+  "source": zod.object({
+  "auctionPages": zod.array(zod.number()),
+  "historyRange": zod.enum(['hour'])
 }),
   "usage": zod.object({
   "used": zod.number(),

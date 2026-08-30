@@ -1,4 +1,5 @@
 import type { ElytraListing } from "@workspace/api-zod";
+import type { MarketAnalysisContext } from "./elytra-market";
 
 const GEMINI_MODEL = "gemini-flash-latest";
 const GEMINI_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
@@ -69,7 +70,7 @@ function parseModelJson(text: string): {
   };
 }
 
-export async function analyzeElytraListing(context: ListingAnalysisContext) {
+async function requestGeminiAnalysis(prompt: string) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error("GEMINI_API_KEY is not configured");
   if (!reserveGeminiAnalysis()) {
@@ -77,20 +78,6 @@ export async function analyzeElytraListing(context: ListingAnalysisContext) {
     error.name = "GeminiAnalysisLimitError";
     throw error;
   }
-
-  const prompt = [
-    "You are a cautious Minecraft DonutSMP Elytra market analyst.",
-    "Analyze this current listing using only the supplied data. Do not invent missing facts.",
-    "Return JSON only with exactly these keys: recommendation, confidence, summary, reasons, risks.",
-    'recommendation must be one of "BUY", "SELL", or "HOLD".',
-    "confidence is an integer from 0 to 100 and represents confidence in the recommendation, not guaranteed accuracy.",
-    "Use BUY when the listing is attractively priced versus the current market, SELL when the listing looks overpriced or selling is favorable, and HOLD when the data is too mixed or incomplete.",
-    "Keep summary to two sentences maximum. Keep reasons and risks concise.",
-    JSON.stringify({
-      listing: context.listing,
-      marketContext: context.marketContext,
-    }),
-  ].join("\n");
 
   const response = await fetch(`${GEMINI_ENDPOINT}?key=${encodeURIComponent(apiKey)}`, {
     method: "POST",
@@ -113,11 +100,91 @@ export async function analyzeElytraListing(context: ListingAnalysisContext) {
   };
   const text = payload.candidates?.[0]?.content?.parts?.map((part) => part.text ?? "").join("").trim();
   if (!text) throw new Error("Gemini returned no analysis");
+  return text;
+}
+
+export async function analyzeElytraListing(context: ListingAnalysisContext) {
+  const result = parseModelJson(await requestGeminiAnalysis([
+    "You are a cautious Minecraft DonutSMP Elytra market analyst.",
+    "Analyze this current listing using only the supplied data. Do not invent missing facts.",
+    "Return JSON only with exactly these keys: recommendation, confidence, summary, reasons, risks.",
+    'recommendation must be one of "BUY", "SELL", or "HOLD".',
+    "confidence is an integer from 0 to 100 and represents confidence in the recommendation, not guaranteed accuracy.",
+    "Use BUY when the listing is attractively priced versus the current market, SELL when the listing looks overpriced or selling is favorable, and HOLD when the data is too mixed or incomplete.",
+    "Keep summary to two sentences maximum. Keep reasons and risks concise.",
+    JSON.stringify({
+      listing: context.listing,
+      marketContext: context.marketContext,
+    }),
+  ].join("\n"));
 
   return {
-    ...parseModelJson(text),
+    ...result,
     listing: context.listing,
     marketContext: context.marketContext,
+    usage: getGeminiUsage(),
+  };
+}
+
+function parseMarketModelJson(text: string): {
+  recommendation: "YES" | "NO";
+  confidence: number;
+  summary: string;
+  reasons: string[];
+  risks: string[];
+} {
+  const cleaned = text.trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/\s*```$/, "");
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(cleaned);
+  } catch {
+    throw new Error("Gemini returned invalid market analysis JSON");
+  }
+  if (!parsed || typeof parsed !== "object") throw new Error("Gemini returned an empty market analysis");
+  const record = parsed as Record<string, unknown>;
+  if (!["YES", "NO"].includes(String(record.recommendation)) ||
+      typeof record.confidence !== "number" || !Number.isFinite(record.confidence) ||
+      typeof record.summary !== "string" ||
+      !Array.isArray(record.reasons) || !record.reasons.every((reason) => typeof reason === "string") ||
+      !Array.isArray(record.risks) || !record.risks.every((risk) => typeof risk === "string")) {
+    throw new Error("Gemini returned an incomplete market analysis");
+  }
+  return {
+    recommendation: record.recommendation as "YES" | "NO",
+    confidence: Math.min(100, Math.max(0, Math.round(record.confidence))),
+    summary: record.summary.trim(),
+    reasons: record.reasons.slice(0, 4) as string[],
+    risks: record.risks.slice(0, 3) as string[],
+  };
+}
+
+export async function analyzeElytraMarket(context: MarketAnalysisContext) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error("GEMINI_API_KEY is not configured");
+  if (!reserveGeminiAnalysis()) {
+    const error = new Error("Gemini analysis limit reached");
+    error.name = "GeminiAnalysisLimitError";
+    throw error;
+  }
+  const prompt = [
+    "You are a cautious Minecraft DonutSMP Elytra market analyst.",
+    "Decide whether a player should buy an Elytra right now using only the supplied live auction pages and stored one-hour price history.",
+    "Return JSON only with exactly these keys: recommendation, confidence, summary, reasons, risks.",
+    'recommendation must be exactly "YES" when the evidence supports buying now, or exactly "NO" when the player should avoid buying or consider selling instead.',
+    "confidence is an integer from 0 to 100 and represents confidence in the YES/NO decision, not guaranteed accuracy.",
+    "Keep summary to two sentences maximum. Keep reasons and risks concise. Do not invent facts or use markdown.",
+    JSON.stringify({
+      auctionPageOne: context.pageOneListings,
+      auctionPageTwo: context.pageTwoListings,
+      pastOneHourGraph: context.hourlyHistory,
+      marketContext: context.marketContext,
+    }),
+  ].join("\n");
+  const marketResult = parseMarketModelJson(await requestGeminiAnalysis(prompt));
+  return {
+    ...marketResult,
+    marketContext: context.marketContext,
+    source: { auctionPages: [1, 2], historyRange: "hour" as const },
     usage: getGeminiUsage(),
   };
 }

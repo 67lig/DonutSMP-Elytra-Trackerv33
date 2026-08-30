@@ -31,6 +31,20 @@ type NormalizedListing = {
   collectedAt: Date;
 };
 
+export type MarketAnalysisContext = {
+  pageOneListings: NormalizedListing[];
+  pageTwoListings: NormalizedListing[];
+  hourlyHistory: Awaited<ReturnType<ElytraMarketService["getHistory"]>>;
+  marketContext: {
+    lowest: number | null;
+    median: number | null;
+    average: number | null;
+    priceChange: number | null;
+    activeListings: number;
+    recentPrices: number[];
+  };
+};
+
 type ApiState = {
   connected: boolean;
   lastUpdated: Date | null;
@@ -737,6 +751,37 @@ export class ElytraMarketService {
         priceChange: latestObservation[0]?.priceChange ?? null,
         activeListings: prices.length,
         recentPrices: observations.reverse().map((row) => row.price),
+      },
+    };
+  }
+
+  async getMarketAnalysisContext(): Promise<MarketAnalysisContext> {
+    const [pageOnePayload, pageTwoPayload, hourlyHistory, currentListings] = await Promise.all([
+      this.fetchPage(1, "auction:analysis:page:1"),
+      this.fetchPage(2, "auction:analysis:page:2"),
+      this.getHistory(ELYTRA_CATEGORIES[0], "hour"),
+      db.select().from(elytraListingsTable)
+        .where(eq(elytraListingsTable.category, ELYTRA_CATEGORIES[0])),
+    ]);
+    const normalizePage = (payload: unknown) => extractRows(payload)
+      .map((row) => normalizeListing(row, new Date()))
+      .filter((listing): listing is NormalizedListing => listing !== null);
+    const prices = currentListings.map((listing) => listing.price).sort((left, right) => left - right);
+    const median = prices.length % 2
+      ? prices[Math.floor(prices.length / 2)]
+      : prices.length ? (prices[prices.length / 2 - 1] + prices[prices.length / 2]) / 2 : null;
+    const average = prices.length ? prices.reduce((sum, price) => sum + price, 0) / prices.length : null;
+    return {
+      pageOneListings: normalizePage(pageOnePayload),
+      pageTwoListings: normalizePage(pageTwoPayload),
+      hourlyHistory,
+      marketContext: {
+        lowest: prices[0] ?? null,
+        median,
+        average,
+        priceChange: hourlyHistory.at(-1)?.priceChange ?? null,
+        activeListings: prices.length,
+        recentPrices: hourlyHistory.map((point) => point.close),
       },
     };
   }
