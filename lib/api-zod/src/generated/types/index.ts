@@ -6,8 +6,13 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from './analyzeElytraListingBody';
 export * from './apiStatus';
 export * from './categoryParameter';
+export * from './elytraAnalysisResponse';
+export * from './elytraAnalysisResponseMarketContext';
+export * from './elytraAnalysisResponseRecommendation';
+export * from './elytraAnalysisResponseUsage';
 export * from './elytraCategory';
 export * from './elytraDashboard';
 export * from './elytraListing';

@@ -126,6 +126,54 @@ export interface MarketAlert {
   detectedAt: string;
 }
 
+export interface AnalyzeElytraListingBody {
+  /** @minLength 1 */
+  listingId: string;
+}
+
+export type ElytraAnalysisResponseRecommendation = typeof ElytraAnalysisResponseRecommendation[keyof typeof ElytraAnalysisResponseRecommendation];
+
+
+export const ElytraAnalysisResponseRecommendation = {
+  BUY: 'BUY',
+  SELL: 'SELL',
+  HOLD: 'HOLD',
+} as const;
+
+export type ElytraAnalysisResponseMarketContext = {
+  /** @nullable */
+  lowest: number | null;
+  /** @nullable */
+  median: number | null;
+  /** @nullable */
+  average: number | null;
+  /** @nullable */
+  priceChange: number | null;
+  activeListings: number;
+  recentPrices: number[];
+};
+
+export type ElytraAnalysisResponseUsage = {
+  used: number;
+  remaining: number;
+  limit: number;
+};
+
+export interface ElytraAnalysisResponse {
+  listing: ElytraListing;
+  recommendation: ElytraAnalysisResponseRecommendation;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  confidence: number;
+  summary: string;
+  reasons: string[];
+  risks: string[];
+  marketContext: ElytraAnalysisResponseMarketContext;
+  usage: ElytraAnalysisResponseUsage;
+}
+
 export type CategoryParameter = ElytraCategory;
 
 export type TimeRangeParameter = TimeRange;

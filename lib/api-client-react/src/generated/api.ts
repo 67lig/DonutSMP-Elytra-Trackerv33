@@ -6,16 +6,22 @@
  * OpenAPI spec version: 0.1.0
  */
 import {
+  useMutation,
   useQuery
 } from '@tanstack/react-query';
 import type {
+  MutationFunction,
   QueryFunction,
   QueryKey,
+  UseMutationOptions,
+  UseMutationResult,
   UseQueryOptions,
   UseQueryResult
 } from '@tanstack/react-query';
 
 import type {
+  AnalyzeElytraListingBody,
+  ElytraAnalysisResponse,
   ElytraDashboard,
   ElytraListing,
   ElytraTransaction,
@@ -29,7 +35,7 @@ import type {
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
-import type { ErrorType } from '../custom-fetch';
+import type { ErrorType , BodyType } from '../custom-fetch';
 
 type AwaitedInput<T> = PromiseLike<T> | T;
 
@@ -546,4 +552,76 @@ export function useGetElytraAlerts<TData = Awaited<ReturnType<typeof getElytraAl
 
 
 
+
+export const getAnalyzeElytraListingUrl = () => {
+
+
+
+
+  return `/api/elytra/analyze`
+}
+
+/**
+ * Analyzes one current Elytra listing against the stored market context.
+ * @summary Ask Gemini for a listing recommendation
+ */
+export const analyzeElytraListing = async (analyzeElytraListingBody: AnalyzeElytraListingBody, options?: Parameters<typeof customFetch>[1]): Promise<ElytraAnalysisResponse> => {
+
+  return customFetch<ElytraAnalysisResponse>(getAnalyzeElytraListingUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(analyzeElytraListingBody)
+  }
+);}
+
+
+
+
+
+export const getAnalyzeElytraListingMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof analyzeElytraListing>>, TError,{data: BodyType<AnalyzeElytraListingBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof analyzeElytraListing>>, TError,{data: BodyType<AnalyzeElytraListingBody>}, TContext> => {
+
+const mutationKey = ['analyzeElytraListing'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof analyzeElytraListing>>, {data: BodyType<AnalyzeElytraListingBody>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  analyzeElytraListing(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AnalyzeElytraListingMutationResult = NonNullable<Awaited<ReturnType<typeof analyzeElytraListing>>>
+    export type AnalyzeElytraListingMutationBody = BodyType<AnalyzeElytraListingBody>
+    export type AnalyzeElytraListingMutationError = ErrorType<void>
+
+    /**
+ * @summary Ask Gemini for a listing recommendation
+ */
+export const useAnalyzeElytraListing = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof analyzeElytraListing>>, TError,{data: BodyType<AnalyzeElytraListingBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof analyzeElytraListing>>,
+        TError,
+        {data: BodyType<AnalyzeElytraListingBody>},
+        TContext
+      > => {
+      return useMutation(getAnalyzeElytraListingMutationOptions(options));
+    }
 

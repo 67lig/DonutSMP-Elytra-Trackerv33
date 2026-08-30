@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   Activity, ArrowDownRight, ArrowUpRight, Bell, Check,
   ChevronDown, Clock3, DatabaseZap, Info, Layers3, ListFilter,
-  Sparkles, Target,
+  Sparkles, Star, Target,
   RefreshCw, Search, ServerCrash, ShieldCheck, TrendingDown,
   Settings2, TrendingUp, Wifi, WifiOff, X,
 } from 'lucide-react';
@@ -28,7 +28,10 @@ type MarketStat = { lowest: number | null; highest: number | null; average: numb
 const SETTINGS_STORAGE_KEYS = {
   median: 'elytra-market-custom-median',
   alertThreshold: 'elytra-market-alert-threshold',
+  favorites: 'elytra-market-favorites',
 } as const;
+
+const GEMINI_ANALYSIS_LIMIT = 5;
 
 function readStoredNumber(key: string, fallback: number | null) {
   if (typeof window === 'undefined') return fallback;
@@ -42,6 +45,21 @@ function writeStoredNumber(key: string, value: number | null) {
   if (typeof window === 'undefined') return;
   if (value == null) window.localStorage.removeItem(key);
   else window.localStorage.setItem(key, String(value));
+}
+
+function readStoredFavorites() {
+  if (typeof window === 'undefined') return new Set<string>();
+  try {
+    const value = JSON.parse(window.localStorage.getItem(SETTINGS_STORAGE_KEYS.favorites) || '[]');
+    return new Set(Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []);
+  } catch {
+    return new Set<string>();
+  }
+}
+
+function writeStoredFavorites(favorites: Set<string>) {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(SETTINGS_STORAGE_KEYS.favorites, JSON.stringify([...favorites]));
 }
 
 function parsePriceInput(input: string) {
@@ -380,26 +398,95 @@ function PredictionPanel({ points, stat, loading, median, medianIsCustom }: { po
   );
 }
 
+type GeminiAnalysis = {
+  listing: any;
+  recommendation: 'BUY' | 'SELL' | 'HOLD';
+  confidence: number;
+  summary: string;
+  reasons: string[];
+  risks: string[];
+  marketContext: { lowest: number | null; median: number | null; average: number | null; priceChange: number | null; activeListings: number; recentPrices: number[] };
+  usage: { used: number; remaining: number; limit: number };
+};
+
+function ListingAnalysisDialog({ analysis, loading, error, onClose }: { analysis: GeminiAnalysis | null; loading: boolean; error: string | null; onClose: () => void }) {
+  if (!analysis && !loading && !error) return null;
+  const positive = analysis?.recommendation === 'BUY';
+  const negative = analysis?.recommendation === 'SELL';
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/65 p-3 backdrop-blur-sm sm:items-center">
+      <div role="dialog" aria-modal="true" aria-labelledby="gemini-analysis-title" className={`panel max-h-[90dvh] w-full max-w-lg overflow-auto rounded-2xl p-5 ${positive ? 'cyan-rule' : negative ? 'amber-rule' : 'border-[hsl(var(--primary)/.35)]'}`}>
+        <div className="flex items-start justify-between gap-4">
+          <div><p className="mono text-[10px] uppercase tracking-[.2em] text-[hsl(var(--primary))]">Gemini market read</p><h2 id="gemini-analysis-title" className="display mt-1 text-xl font-bold">Should you buy or sell?</h2><p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">One of five available analyses · not financial advice</p></div>
+          <button type="button" onClick={onClose} aria-label="Close Gemini analysis" className="rounded-md p-1.5 text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--secondary))] hover:text-[hsl(var(--foreground))]"><X size={16} /></button>
+        </div>
+        {loading ? <div className="mt-6 space-y-3"><Skeleton className="h-16 w-full" /><Skeleton className="h-4 w-11/12" /><Skeleton className="h-4 w-4/5" /><Skeleton className="h-20 w-full" /></div> : error ? <div className="mt-6 rounded-lg border border-[hsl(var(--destructive)/.3)] bg-[hsl(var(--destructive)/.08)] p-4 text-sm"><p className="font-bold">Analysis unavailable</p><p className="mt-1 text-xs leading-5 text-[hsl(var(--muted-foreground))]">{error}</p></div> : analysis && (
+          <>
+            <div className="mt-6 flex items-end justify-between gap-3"><div><p className="mono text-[10px] uppercase tracking-wider text-[hsl(var(--muted-foreground))]">recommendation</p><p data-testid="text-gemini-recommendation" className={`display mt-1 text-4xl font-bold ${positive ? 'text-[hsl(var(--chart-3))]' : negative ? 'text-[hsl(var(--accent))]' : 'text-[hsl(var(--muted-foreground))]'}`}>{analysis.recommendation}</p></div><div className="text-right"><p className="mono text-[10px] uppercase tracking-wider text-[hsl(var(--muted-foreground))]">confidence</p><p data-testid="text-gemini-confidence" className="display mt-1 text-2xl font-bold">{analysis.confidence}%</p></div></div>
+            <div className="mt-4 h-2 overflow-hidden rounded-full bg-[hsl(var(--secondary))]"><div className={`h-full rounded-full ${positive ? 'bg-[hsl(var(--chart-3))]' : negative ? 'bg-[hsl(var(--accent))]' : 'bg-[hsl(var(--primary))]'}`} style={{ width: `${analysis.confidence}%` }} /></div>
+            <p className="mt-4 text-sm leading-6">{analysis.summary}</p>
+            <div className="mt-5 grid gap-4 sm:grid-cols-2"><div><p className="mono text-[10px] uppercase tracking-wider text-[hsl(var(--muted-foreground))]">Why</p><ul className="mt-2 space-y-2 text-xs leading-5">{analysis.reasons.map((reason) => <li key={reason} className="flex gap-2"><span className="text-[hsl(var(--chart-3))]">+</span>{reason}</li>)}</ul></div><div><p className="mono text-[10px] uppercase tracking-wider text-[hsl(var(--muted-foreground))]">Risks</p><ul className="mt-2 space-y-2 text-xs leading-5">{analysis.risks.map((risk) => <li key={risk} className="flex gap-2"><span className="text-[hsl(var(--accent))]">!</span>{risk}</li>)}</ul></div></div>
+            <div className="mt-5 grid grid-cols-2 gap-2 border-t border-[hsl(var(--card-border))] pt-4 text-xs"><div><span className="text-[hsl(var(--muted-foreground))]">listing price </span><span className="mono">{formatPrice(analysis.listing.price)}</span></div><div className="text-right"><span className="text-[hsl(var(--muted-foreground))]">market low </span><span className="mono">{formatPrice(analysis.marketContext.lowest)}</span></div></div>
+            <p className="mt-4 text-[10px] text-[hsl(var(--muted-foreground))]">Gemini analyses used: {analysis.usage.used}/{analysis.usage.limit}. Confidence is an estimate, not a guarantee.</p>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function ListingsPanel({ listings, loading, category, sort, setSort }: { listings: any[]; loading: boolean; category: Category; sort: ListingSort; setSort: (value: ListingSort) => void }) {
   const [search, setSearch] = useState('');
+  const [favorites, setFavorites] = useState<Set<string>>(() => readStoredFavorites());
+  const [analysis, setAnalysis] = useState<GeminiAnalysis | null>(null);
+  const [analysisLoading, setAnalysisLoading] = useState(false);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [analysisUses, setAnalysisUses] = useState(0);
   const filtered = listings.filter((listing) => {
     const valid = safeCategory(listing.category);
     return valid === category && `${listing.displayName} ${listing.seller}`.toLowerCase().includes(search.toLowerCase());
   });
+  const toggleFavorite = (listingId: string) => {
+    setFavorites((current) => {
+      const next = new Set(current);
+      if (next.has(listingId)) next.delete(listingId);
+      else next.add(listingId);
+      writeStoredFavorites(next);
+      return next;
+    });
+  };
+  const askGemini = async (listing: any) => {
+    if (analysisLoading || analysisUses >= GEMINI_ANALYSIS_LIMIT) return;
+    setAnalysisLoading(true);
+    setAnalysis(null);
+    setAnalysisError(null);
+    try {
+      const response = await fetch('/api/elytra/analyze', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ listingId: listing.id }) });
+      const payload = await response.json() as GeminiAnalysis & { error?: string; usage?: { used: number } };
+      if (!response.ok) throw new Error(payload.error || 'Gemini could not complete the analysis.');
+      setAnalysis(payload);
+      setAnalysisUses(payload.usage.used);
+    } catch (error) {
+      setAnalysisError(error instanceof Error ? error.message : 'Gemini could not complete the analysis.');
+    } finally {
+      setAnalysisLoading(false);
+    }
+  };
   return (
     <section className="panel min-w-0 rounded-xl p-4 sm:p-5">
-      <SectionHeading eyebrow="live inventory" title="Current listings" detail="Elytras returned by the DonutSMP Auction House search" action={<span className="mono rounded-md bg-[hsl(var(--secondary))] px-2 py-1 text-[10px] text-[hsl(var(--primary))]">{filtered.length} shown</span>} />
+      <SectionHeading eyebrow="live inventory" title="Current listings" detail="Elytras returned by the DonutSMP Auction House search" action={<div className="flex items-center gap-2"><span className="mono rounded-md bg-[hsl(var(--secondary))] px-2 py-1 text-[10px] text-[hsl(var(--primary))]">{filtered.length} shown</span><span className="mono rounded-md bg-[hsl(var(--secondary))] px-2 py-1 text-[10px] text-[hsl(var(--muted-foreground))]">Gemini {analysisUses}/{GEMINI_ANALYSIS_LIMIT}</span></div>} />
       <div className="mb-3 flex flex-col gap-2 sm:flex-row">
         <label className="relative flex-1"><Search size={14} className="absolute left-3 top-2.5 text-[hsl(var(--muted-foreground))]" /><input data-testid="input-listing-search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search seller or item ID" className="w-full rounded-lg border border-[hsl(var(--card-border))] bg-[hsl(var(--secondary))] py-2 pl-9 pr-3 text-xs outline-none placeholder:text-[hsl(var(--muted-foreground))] focus:border-[hsl(var(--primary))]" /></label>
         <SelectControl value={sort} onChange={(value) => setSort(value as ListingSort)} label="Listing sort" testId="select-listing-sort"><option value="recent">Recent</option><option value="lowest">Lowest</option><option value="highest">Highest</option></SelectControl>
       </div>
-      <div className="scrollbar-thin max-h-[345px] overflow-auto">
-         {loading ? <div className="space-y-2"><Skeleton className="h-14 w-full" /><Skeleton className="h-14 w-full" /><Skeleton className="h-14 w-full" /></div> : filtered.length === 0 ? <div data-testid="empty-listings" className="rounded-lg border border-dashed border-[hsl(var(--card-border))] px-4 py-9 text-center"><ListFilter size={20} className="mx-auto text-[hsl(var(--muted-foreground))]" /><p className="mt-2 text-sm font-semibold">{search ? 'No matching listings' : 'No active listings'}</p><p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">The endpoint returned no direct Elytra listings for this filter.</p></div> : <div className="space-y-1.5">{filtered.map((listing) => <div data-testid={`row-listing-${listing.id}`} key={listing.id} className="group grid grid-cols-[1fr_auto] gap-3 rounded-lg border border-transparent px-3 py-2.5 transition-colors hover:border-[hsl(var(--card-border))] hover:bg-[hsl(var(--secondary)/.55)] sm:grid-cols-[1.25fr_.8fr_auto]">
+       <div className="scrollbar-thin max-h-[345px] overflow-auto">
+          {loading ? <div className="space-y-2"><Skeleton className="h-14 w-full" /><Skeleton className="h-14 w-full" /><Skeleton className="h-14 w-full" /></div> : filtered.length === 0 ? <div data-testid="empty-listings" className="rounded-lg border border-dashed border-[hsl(var(--card-border))] px-4 py-9 text-center"><ListFilter size={20} className="mx-auto text-[hsl(var(--muted-foreground))]" /><p className="mt-2 text-sm font-semibold">{search ? 'No matching listings' : 'No active listings'}</p><p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">The endpoint returned no direct Elytra listings for this filter.</p></div> : <div className="space-y-1.5">{filtered.map((listing) => <div data-testid={`row-listing-${listing.id}`} key={listing.id} className="group grid grid-cols-[1fr_auto] gap-3 rounded-lg border border-transparent px-3 py-2.5 transition-colors hover:border-[hsl(var(--card-border))] hover:bg-[hsl(var(--secondary)/.55)] sm:grid-cols-[1.25fr_.8fr_auto]">
            <div className="min-w-0"><div className="flex items-center gap-2"><p className="truncate text-xs font-bold">{listing.displayName || 'Elytra'}</p><span className="hidden rounded bg-[hsl(var(--primary)/.1)] px-1.5 py-0.5 mono text-[9px] text-[hsl(var(--primary))] sm:inline">{categoryShort[safeCategory(listing.category) || 'elytra']}</span></div><p className="mt-1 truncate text-[10px] text-[hsl(var(--muted-foreground))]">{listing.seller} · {listing.quantity} unit{listing.quantity === 1 ? '' : 's'}{listing.timeRemaining ? ` · ${listing.timeRemaining}` : ''}</p></div>
           <p className="mono self-center text-right text-sm font-bold">{formatPrice(listing.price)}</p>
-          <p className="col-start-1 text-[10px] text-[hsl(var(--muted-foreground))] sm:col-auto sm:self-center sm:text-right">{formatTime(listing.collectedAt)}</p>
+            <div className="col-start-1 flex items-center gap-1 sm:col-auto sm:self-center sm:justify-end"><p className="mr-auto text-[10px] text-[hsl(var(--muted-foreground))] sm:mr-2">{formatTime(listing.collectedAt)}</p><button type="button" data-testid={`button-favorite-${listing.id}`} onClick={() => toggleFavorite(listing.id)} aria-label={favorites.has(listing.id) ? `Unfavorite ${listing.displayName}` : `Favorite ${listing.displayName}`} className={`rounded-md p-1.5 transition-colors ${favorites.has(listing.id) ? 'text-[hsl(var(--accent))]' : 'text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--accent))]'}`}><Star size={15} fill={favorites.has(listing.id) ? 'currentColor' : 'none'} /></button><button type="button" data-testid={`button-ask-gemini-${listing.id}`} disabled={analysisLoading || analysisUses >= GEMINI_ANALYSIS_LIMIT} onClick={() => void askGemini(listing)} aria-label={`Ask Gemini about ${listing.displayName}`} title={analysisUses >= GEMINI_ANALYSIS_LIMIT ? 'Gemini analysis limit reached' : 'Ask Gemini'} className="rounded-md bg-[hsl(var(--primary)/.12)] p-1.5 text-[hsl(var(--primary))] transition-colors hover:bg-[hsl(var(--primary)/.22)] disabled:cursor-not-allowed disabled:opacity-40"><Sparkles size={15} /></button></div>
         </div>)}</div>}
       </div>
+      <ListingAnalysisDialog analysis={analysis} loading={analysisLoading} error={analysisError} onClose={() => { setAnalysis(null); setAnalysisError(null); }} />
     </section>
   );
 }
@@ -454,7 +541,7 @@ export default function Dashboard() {
   const transactionParams = useMemo(() => ({ category: transactionCategory }), [transactionCategory]);
   const alertParams = useMemo(() => ({ limit: 8, threshold: alertThreshold }), [alertThreshold]);
 
-  const liveQueryOptions = { refetchInterval: 1000, refetchIntervalInBackground: true, staleTime: 500 };
+  const liveQueryOptions = { refetchInterval: 5000, refetchIntervalInBackground: true, staleTime: 1000 };
   const dashboardQuery = useGetElytraDashboard({ query: { queryKey: getGetElytraDashboardQueryKey(), ...liveQueryOptions } });
   const historyQuery = useGetElytraHistory(historyParams, { query: { queryKey: getGetElytraHistoryQueryKey(historyParams), ...liveQueryOptions } });
   const listingsQuery = useGetElytraListings(listingParams, { query: { queryKey: getGetElytraListingsQueryKey(listingParams), ...liveQueryOptions } });
@@ -484,7 +571,7 @@ export default function Dashboard() {
       <header className="border-b border-[hsl(var(--border))] bg-[hsl(var(--background)/.86)] backdrop-blur-md">
         <div className="mx-auto flex max-w-[1560px] items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
           <div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl border border-[hsl(var(--primary)/.35)] bg-[hsl(var(--primary)/.1)]"><img src="/elytra-logo.png" alt="" className="h-full w-full object-contain" /></div><div><p className="display text-base font-bold tracking-tight">DonutSMP <span className="text-[hsl(var(--primary))]">/ Elytra</span></p><p className="mono text-[9px] uppercase tracking-[.2em] text-[hsl(var(--muted-foreground))]">market instrument panel</p></div></div>
-          <div className="flex items-center gap-2 sm:gap-5"><div className="hidden items-center gap-2 text-right sm:flex"><span className="h-1.5 w-1.5 rounded-full bg-[hsl(var(--chart-3))]" /><span className="mono text-[10px] uppercase tracking-wider text-[hsl(var(--muted-foreground))]">170 base calls / min · pages 12+ on demand</span></div><button type="button" data-testid="button-refresh-all" onClick={refetchAll} className="inline-flex items-center gap-2 rounded-lg border border-[hsl(var(--card-border))] bg-[hsl(var(--secondary)/.6)] px-3 py-2 text-xs font-bold text-[hsl(var(--foreground))] transition-colors hover:border-[hsl(var(--primary)/.55)] hover:text-[hsl(var(--primary))]"><RefreshCw size={14} className={dashboardQuery.isFetching ? 'animate-spin' : ''} /><span className="hidden sm:inline">Refresh</span></button></div>
+           <div className="flex items-center gap-2 sm:gap-5"><div className="hidden items-center gap-2 text-right sm:flex"><span className="h-1.5 w-1.5 rounded-full bg-[hsl(var(--chart-3))]" /><span className="mono text-[10px] uppercase tracking-wider text-[hsl(var(--muted-foreground))]">1 upstream call / 5s · lowest-price page</span></div><button type="button" data-testid="button-refresh-all" onClick={refetchAll} className="inline-flex items-center gap-2 rounded-lg border border-[hsl(var(--card-border))] bg-[hsl(var(--secondary)/.6)] px-3 py-2 text-xs font-bold text-[hsl(var(--foreground))] transition-colors hover:border-[hsl(var(--primary)/.55)] hover:text-[hsl(var(--primary))]"><RefreshCw size={14} className={dashboardQuery.isFetching ? 'animate-spin' : ''} /><span className="hidden sm:inline">Refresh</span></button></div>
         </div>
       </header>
       <div className="mx-auto max-w-[1560px] px-4 pb-10 pt-6 sm:px-6 lg:px-8">

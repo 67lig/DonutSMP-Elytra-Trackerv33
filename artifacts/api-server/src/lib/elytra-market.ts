@@ -37,20 +37,20 @@ type ApiState = {
   message: string;
 };
 
-const POLL_INTERVAL_MS = 60_000;
+const POLL_INTERVAL_MS = 5_000;
 const MAX_AUCTION_PAGES = 20;
 const ROLLING_REQUEST_LIMIT = 220;
-const BASE_REQUESTS_PER_CYCLE = 170;
-const MAX_REQUESTS_PER_CYCLE = 220;
-const PAGE_ONE_REQUESTS_PER_CYCLE = 60;
+const BASE_REQUESTS_PER_CYCLE = 1;
+const MAX_REQUESTS_PER_CYCLE = 1;
+const PAGE_ONE_REQUESTS_PER_CYCLE = 1;
 const SECONDARY_REQUESTS_PER_CYCLE = BASE_REQUESTS_PER_CYCLE - PAGE_ONE_REQUESTS_PER_CYCLE;
 const PRIMARY_PAGE_START = 2;
-const PRIMARY_PAGE_COUNT = 10;
-const BASE_EXPLORATORY_REQUESTS_PER_CYCLE = 30;
+const PRIMARY_PAGE_COUNT = 0;
+const BASE_EXPLORATORY_REQUESTS_PER_CYCLE = 0;
 const ACTIVE_EXPLORATORY_REQUESTS_PER_CYCLE = MAX_REQUESTS_PER_CYCLE - BASE_REQUESTS_PER_CYCLE;
 const EXPLORATORY_PAGE_START = 12;
-const EXPLORATORY_PAGE_COUNT = MAX_AUCTION_PAGES - EXPLORATORY_PAGE_START + 1;
-const PAGE_ONE_INTERVAL_MS = 1_000;
+const EXPLORATORY_PAGE_COUNT = Math.max(1, MAX_AUCTION_PAGES - EXPLORATORY_PAGE_START + 1);
+const PAGE_ONE_INTERVAL_MS = 0;
 const REQUEST_WINDOW_MS = 60_000;
 
 type ScheduledRequest = {
@@ -350,7 +350,7 @@ export class ElytraMarketService {
     return {
       ...this.state,
       requestsInWindow: this.requestManager.usage(),
-      requestLimit: this.activeRequestLimit,
+      requestLimit: ROLLING_REQUEST_LIMIT,
     };
   }
 
@@ -495,10 +495,8 @@ export class ElytraMarketService {
        const priceChange = lastObservation?.price
          ? ((lowest - lastObservation.price) / lastObservation.price) * 100
         : null;
-      const shouldRecord = !lastObservation ||
-        Math.abs((priceChange ?? 0)) >= 0.1 ||
-        lastObservation.sampleSize !== current.length ||
-        Date.now() - lastObservation.timestamp.getTime() >= 300_000;
+       const shouldRecord = !lastObservation ||
+         Date.now() - lastObservation.timestamp.getTime() >= POLL_INTERVAL_MS;
       if (shouldRecord) {
         await db.insert(priceObservationsTable).values({
           category,
@@ -702,6 +700,43 @@ export class ElytraMarketService {
       : sort === "recent"
         ? b.collectedAt.getTime() - a.collectedAt.getTime()
         : a.price - b.price);
+  }
+
+  async getListingAnalysisContext(listingId: string) {
+    const [listing] = await db.select().from(elytraListingsTable)
+      .where(eq(elytraListingsTable.id, listingId))
+      .limit(1);
+    if (!listing) return null;
+
+    const [latestObservation, observations, allListings] = await Promise.all([
+      db.select().from(priceObservationsTable)
+        .where(eq(priceObservationsTable.category, listing.category))
+        .orderBy(desc(priceObservationsTable.timestamp))
+        .limit(1),
+      db.select().from(priceObservationsTable)
+        .where(eq(priceObservationsTable.category, listing.category))
+        .orderBy(desc(priceObservationsTable.timestamp))
+        .limit(12),
+      db.select().from(elytraListingsTable)
+        .where(eq(elytraListingsTable.category, listing.category)),
+    ]);
+    const prices = allListings.map((row) => row.price).sort((a, b) => a - b);
+    const median = prices.length % 2
+      ? prices[Math.floor(prices.length / 2)]
+      : prices.length ? (prices[prices.length / 2 - 1] + prices[prices.length / 2]) / 2 : null;
+    const average = prices.length ? prices.reduce((sum, price) => sum + price, 0) / prices.length : null;
+
+    return {
+      listing: { ...listing, category: "elytra" as const },
+      marketContext: {
+        lowest: prices[0] ?? null,
+        median,
+        average,
+        priceChange: latestObservation[0]?.priceChange ?? null,
+        activeListings: prices.length,
+        recentPrices: observations.reverse().map((row) => row.price),
+      },
+    };
   }
 
   async getTransactions(category?: ElytraCategory) {

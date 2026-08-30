@@ -143,3 +143,54 @@ export const GetElytraAlertsResponseItem = zod.object({
 export const GetElytraAlertsResponse = zod.array(GetElytraAlertsResponseItem)
 
 
+/**
+ * Analyzes one current Elytra listing against the stored market context.
+ * @summary Ask Gemini for a listing recommendation
+ */
+
+
+
+export const AnalyzeElytraListingBody = zod.object({
+  "listingId": zod.string().min(1)
+})
+
+export const analyzeElytraListingResponseConfidenceMin = 0;
+export const analyzeElytraListingResponseConfidenceMax = 100;
+
+
+
+export const AnalyzeElytraListingResponse = zod.object({
+  "listing": zod.object({
+  "id": zod.string(),
+  "itemId": zod.string().nullable(),
+  "displayName": zod.string(),
+  "category": zod.enum(['elytra']),
+  "enchantments": zod.array(zod.string()),
+  "price": zod.number(),
+  "seller": zod.string(),
+  "sellerUuid": zod.string().nullable(),
+  "quantity": zod.number(),
+  "timeRemaining": zod.string().nullable(),
+  "collectedAt": zod.coerce.date()
+}),
+  "recommendation": zod.enum(['BUY', 'SELL', 'HOLD']),
+  "confidence": zod.number().min(analyzeElytraListingResponseConfidenceMin).max(analyzeElytraListingResponseConfidenceMax),
+  "summary": zod.string(),
+  "reasons": zod.array(zod.string()),
+  "risks": zod.array(zod.string()),
+  "marketContext": zod.object({
+  "lowest": zod.number().nullable(),
+  "median": zod.number().nullable(),
+  "average": zod.number().nullable(),
+  "priceChange": zod.number().nullable(),
+  "activeListings": zod.number(),
+  "recentPrices": zod.array(zod.number())
+}),
+  "usage": zod.object({
+  "used": zod.number(),
+  "remaining": zod.number(),
+  "limit": zod.number()
+})
+})
+
+

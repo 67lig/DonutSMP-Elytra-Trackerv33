@@ -121,6 +121,33 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/MarketAlert"
+  /elytra/analyze:
+    post:
+      operationId: analyzeElytraListing
+      tags: [elytra]
+      summary: Ask Gemini for a listing recommendation
+      description: Analyzes one current Elytra listing against the stored market context.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnalyzeElytraListingBody"
+      responses:
+        "200":
+          description: Gemini recommendation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ElytraAnalysisResponse"
+        "400":
+          description: Invalid listing id
+        "404":
+          description: Listing not found
+        "429":
+          description: Gemini analysis limit reached
+        "502":
+          description: Gemini analysis failed
 components:
   parameters:
     Category:
@@ -308,4 +335,62 @@ components:
           type: string
           format: date-time
       required: [id, type, category, affectedQuantity, previousPrice, currentPrice, percentageChange, estimatedValue, detectedAt]
+    AnalyzeElytraListingBody:
+      type: object
+      properties:
+        listingId:
+          type: string
+          minLength: 1
+      required: [listingId]
+    ElytraAnalysisResponse:
+      type: object
+      properties:
+        listing:
+          $ref: "#/components/schemas/ElytraListing"
+        recommendation:
+          type: string
+          enum: [BUY, SELL, HOLD]
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 100
+        summary:
+          type: string
+        reasons:
+          type: array
+          items:
+            type: string
+        risks:
+          type: array
+          items:
+            type: string
+        marketContext:
+          type: object
+          properties:
+            lowest:
+              type: ["number", "null"]
+            median:
+              type: ["number", "null"]
+            average:
+              type: ["number", "null"]
+            priceChange:
+              type: ["number", "null"]
+            activeListings:
+              type: number
+            recentPrices:
+              type: array
+              items:
+                type: number
+          required: [lowest, median, average, priceChange, activeListings, recentPrices]
+        usage:
+          type: object
+          properties:
+            used:
+              type: number
+            remaining:
+              type: number
+            limit:
+              type: number
+          required: [used, remaining, limit]
+      required: [listing, recommendation, confidence, summary, reasons, risks, marketContext, usage]
 

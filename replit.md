@@ -4,12 +4,12 @@ Live market dashboard for qualifying DonutSMP Elytras, with persistent price obs
 
 ## Run & Operate
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
+- `pnpm --filter @workspace/api-server run dev` — run the API server (port 8080)
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
+- Required secrets: `DONUTSMP_API_KEY` for market polling and `GEMINI_API_KEY` for the five-analysis Buy/Sell action
 
 ## Stack
 
@@ -31,10 +31,11 @@ Live market dashboard for qualifying DonutSMP Elytras, with persistent price obs
 ## Architecture decisions
 
 - DonutSMP polling is centralized in the API server, so browser visitors share one cached snapshot and cannot multiply upstream traffic.
-- Each one-minute poll cycle makes 170 staggered upstream requests by default: page 1 once per second (60 requests) and pages 2–11 rotated for 110 requests. Pages 12–20 are probed only when the last primary page contains direct Elytras; that conditional scan adds 30 requests and escalates to 50 only when it finds more direct Elytras. The rolling ceiling is 220 requests.
+- The API server makes one lowest-price page request every five seconds, then records the lowest returned price as a real market snapshot. Browser visitors share this cached feed and cannot multiply upstream traffic.
 - Massive buy alerts fire when at least 10 units disappear from active listings; massive sell alerts fire when at least 10 units are added. Lowest-price movement is included as context, with no fixed coin threshold.
 - The live feed is currently scoped to every Elytra returned by DonutSMP's `search: elytra` request; enchantment filtering is intentionally deferred.
 - The auction endpoint provides current listings, not a sale ledger, so the activity panel is explicitly labeled as observed market activity rather than fabricated completed sales.
+- Gemini analysis is server-only and capped at five calls per API process lifetime; the listing data and current market context are sent to Gemini, while the key stays in Replit Secrets.
 
 ## Product
 
@@ -47,6 +48,7 @@ _Populate as you build — explicit user instructions worth remembering across s
 ## Gotchas
 
 - The DonutSMP API key is server-only in `DONUTSMP_API_KEY`; it must never be read by the frontend.
+- The Gemini API key is server-only in `GEMINI_API_KEY`; the UI can request analysis but must never receive the key.
 - Empty market data is represented with null price fields and empty collections; the UI must not replace unavailable data with zeros or synthetic points.
 - DonutSMP auction responses wrap records in `result`, nest seller data, and encode remaining time in milliseconds.
 
