@@ -91,6 +91,14 @@ router.post("/elytra/analyze", async (req, res): Promise<void> => {
       res.status(429).json({ error: error.message, usage: getGeminiUsage() });
       return;
     }
+    if (error instanceof Error && error.name === "OpenRouterCreditsError") {
+      res.status(402).json({ error: error.message, usage: getGeminiUsage() });
+      return;
+    }
+    if (error instanceof Error && error.name === "OpenRouterAuthenticationError") {
+      res.status(502).json({ error: "OpenRouter authentication failed. Check the OPENAI_API_KEY secret.", usage: getGeminiUsage() });
+      return;
+    }
     const message = error instanceof Error ? error.message : "Gemini analysis failed";
     res.status(502).json({ error: message, usage: getGeminiUsage() });
   }
@@ -113,6 +121,14 @@ router.post("/elytra/analyze-market", async (req, res): Promise<void> => {
   } catch (error) {
     if (error instanceof Error && error.name === "GeminiAnalysisLimitError") {
       res.status(429).json({ error: error.message, usage: getGeminiUsage() });
+      return;
+    }
+    if (error instanceof Error && error.name === "OpenRouterCreditsError") {
+      res.status(402).json({ error: error.message, usage: getGeminiUsage() });
+      return;
+    }
+    if (error instanceof Error && error.name === "OpenRouterAuthenticationError") {
+      res.status(502).json({ error: "OpenRouter authentication failed. Check the OPENAI_API_KEY secret.", usage: getGeminiUsage() });
       return;
     }
     const message = error instanceof Error ? error.message : "Gemini market analysis failed";

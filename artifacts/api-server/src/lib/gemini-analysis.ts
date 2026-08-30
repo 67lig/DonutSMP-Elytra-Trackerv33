@@ -1,8 +1,8 @@
 import type { ElytraListing } from "@workspace/api-zod";
 import type { MarketAnalysisContext } from "./elytra-market";
 
-const GEMINI_MODEL = "gemini-3.6-flash";
-const GEMINI_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+const GEMINI_MODEL = "google/gemini-3.5-flash-lite";
+const OPENROUTER_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
 export const GEMINI_ANALYSIS_LIMIT = 5;
 const GEMINI_ANALYSIS_WINDOW_MS = 60 * 60 * 1_000;
 
@@ -87,8 +87,8 @@ function parseModelJson(text: string): {
 }
 
 async function requestGeminiAnalysis(prompt: string) {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) throw new Error("GEMINI_API_KEY is not configured");
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) throw new Error("OPENAI_API_KEY is not configured");
   const reservation = reserveGeminiAnalysis();
   if (reservation === null) {
     const error = new Error("Gemini analysis limit reached");
@@ -97,27 +97,50 @@ async function requestGeminiAnalysis(prompt: string) {
   }
 
   try {
-    const response = await fetch(`${GEMINI_ENDPOINT}?key=${encodeURIComponent(apiKey)}`, {
+    const response = await fetch(OPENROUTER_ENDPOINT, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://replit.com",
+        "X-Title": "DonutSMP Elytra Market Tracker",
+      },
       body: JSON.stringify({
-        contents: [{ role: "user", parts: [{ text: prompt }] }],
-        generationConfig: {
-          responseMimeType: "application/json",
-          maxOutputTokens: 8192,
-          temperature: 0.2,
-        },
+        model: GEMINI_MODEL,
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: 8192,
+        temperature: 0.2,
+        response_format: { type: "json_object" },
       }),
     });
 
     if (!response.ok) {
-      throw new Error(`Gemini returned HTTP ${response.status}`);
+      let providerMessage = "";
+      try {
+        const errorPayload = await response.json() as {
+          error?: { message?: string };
+        };
+        providerMessage = errorPayload.error?.message?.trim() ?? "";
+      } catch {
+        // Keep the status-based error when OpenRouter does not return JSON.
+      }
+      const error = new Error(providerMessage || `OpenRouter returned HTTP ${response.status}`);
+      if (response.status === 402) error.name = "OpenRouterCreditsError";
+      if (response.status === 401) error.name = "OpenRouterAuthenticationError";
+      throw error;
     }
     const payload = await response.json() as {
-      candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+      choices?: Array<{
+        message?: {
+          content?: string | Array<{ type?: string; text?: string }>;
+        };
+      }>;
     };
-    const text = payload.candidates?.[0]?.content?.parts?.map((part) => part.text ?? "").join("").trim();
-    if (!text) throw new Error("Gemini returned no analysis");
+    const content = payload.choices?.[0]?.message?.content;
+    const text = Array.isArray(content)
+      ? content.map((part) => part.text ?? "").join("").trim()
+      : content?.trim();
+    if (!text) throw new Error("OpenRouter returned no analysis");
     return text;
   } catch (error) {
     releaseGeminiAnalysis(reservation);
@@ -181,8 +204,6 @@ function parseMarketModelJson(text: string): {
 }
 
 export async function analyzeElytraMarket(context: MarketAnalysisContext) {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) throw new Error("GEMINI_API_KEY is not configured");
   const prompt = [
     "You are a cautious Minecraft DonutSMP Elytra market analyst.",
     "Decide whether a player should buy an Elytra right now using only the supplied live auction pages and selected stored price history.",

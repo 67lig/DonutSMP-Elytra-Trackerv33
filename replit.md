@@ -9,7 +9,7 @@ Live market dashboard for qualifying DonutSMP Elytras, with persistent price obs
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required secrets: `DONUTSMP_API_KEY` for market polling and `GEMINI_API_KEY` for the five-analysis Buy/Sell action
+- Required secrets: `DONUTSMP_API_KEY` for market polling and `OPENAI_API_KEY` for OpenRouter-backed Gemini analysis
 
 ## Stack
 
@@ -35,7 +35,7 @@ Live market dashboard for qualifying DonutSMP Elytras, with persistent price obs
 - Massive buy alerts fire when at least 10 units disappear from active listings; massive sell alerts fire when at least 10 units are added. Lowest-price movement is included as context, with no fixed coin threshold.
 - The live feed is currently scoped to every Elytra returned by DonutSMP's `search: elytra` request; enchantment filtering is intentionally deferred.
 - The auction endpoint provides current listings, not a sale ledger, so the activity panel is explicitly labeled as observed market activity rather than fabricated completed sales.
-- Gemini analysis is server-only and capped at five calls per rolling hour; market analysis sends auction pages one and two plus the selected real price-history range, while the key stays in Replit Secrets.
+- Gemini analysis is server-only through OpenRouter using `google/gemini-3.5-flash-lite`, capped at five calls per rolling hour; market analysis sends auction pages one and two plus the selected real price-history range, while the key stays in Replit Secrets.
 
 ## Product
 
@@ -48,7 +48,7 @@ _Populate as you build — explicit user instructions worth remembering across s
 ## Gotchas
 
 - The DonutSMP API key is server-only in `DONUTSMP_API_KEY`; it must never be read by the frontend.
-- The Gemini API key is server-only in `GEMINI_API_KEY`; the UI can request analysis but must never receive the key.
+- The OpenRouter key is server-only in `OPENAI_API_KEY`; the UI can request Gemini analysis but must never receive the key.
 - Empty market data is represented with null price fields and empty collections; the UI must not replace unavailable data with zeros or synthetic points.
 - DonutSMP auction responses wrap records in `result`, nest seller data, and encode remaining time in milliseconds.
 

@@ -1,3 +1,4 @@
 - [DonutSMP API shape](donutsmp-api-shape.md) — auction records use nested result, seller, item, and millisecond time-left fields.
 - [Imported artifact workflows](imported-artifact-workflows.md) — imported manifests may lack registry entries; manual workflows need explicit PORT and BASE_PATH.
 - [Market chart data](market-chart-data.md) — chart OHLC must aggregate stored lowest-price observations, not raw listing transactions.
+- [OpenRouter AI access](openrouter-ai-provider.md) — provider requests can be correctly configured yet return 402 when the account has no credits.
