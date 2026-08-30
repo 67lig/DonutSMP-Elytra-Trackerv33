@@ -21,11 +21,12 @@ export type TimeRange = typeof TimeRange[keyof typeof TimeRange];
 
 export const TimeRange = {
   five_minutes: 'five_minutes',
-  hour: 'hour',
   today: 'today',
   seven_days: 'seven_days',
   thirty_days: 'thirty_days',
+  ninety_days: 'ninety_days',
   one_year: 'one_year',
+  all_time: 'all_time',
 } as const;
 
 export interface ElytraStats {

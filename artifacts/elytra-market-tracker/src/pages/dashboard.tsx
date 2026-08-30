@@ -21,7 +21,16 @@ import {
 
 const CATEGORIES = ['elytra'] as const;
 type Category = typeof CATEGORIES[number];
-type Range = 'five_minutes' | 'hour' | 'today' | 'seven_days' | 'thirty_days' | 'one_year';
+const HISTORY_RANGES = [
+  { value: 'five_minutes', label: 'Last 5 minutes' },
+  { value: 'today', label: 'Today' },
+  { value: 'seven_days', label: '7 days' },
+  { value: 'thirty_days', label: '30 days' },
+  { value: 'ninety_days', label: '90 days' },
+  { value: 'one_year', label: '1 year' },
+  { value: 'all_time', label: 'All time' },
+] as const;
+type Range = typeof HISTORY_RANGES[number]['value'];
 type ListingSort = 'lowest' | 'highest' | 'recent';
 type ChartPoint = { timestamp: string; price: number; open: number; high: number; low: number; close: number; priceChange: number | null; sampleSize: number; observationCount: number; category: string };
 type MarketStat = { lowest: number | null; highest: number | null; average: number | null; median: number | null; activeListings: number; priceChange: number | null; currency: string };
@@ -208,18 +217,41 @@ function StatCard({ category, stat, selected, onSelect, benchmarkMedian, hasCust
   );
 }
 
-function buildCandlePoints(points: ChartPoint[]) {
-  return points.map((point) => ({
-    ...point,
-    open: point.open,
-    high: point.high,
-    low: point.low,
-    close: point.close,
-  }));
-}
-
 function formatChartValue(value: number) {
   return new Intl.NumberFormat('en-US', { maximumFractionDigits: 20 }).format(value);
+}
+
+function formatChartAxisTime(timestamp: string, range: Range) {
+  const date = new Date(timestamp);
+  if (range === 'five_minutes' || range === 'today') {
+    return new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit' }).format(date);
+  }
+  if (range === 'one_year' || range === 'all_time') {
+    return new Intl.DateTimeFormat('en-US', { month: 'short', year: 'numeric' }).format(date);
+  }
+  return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(date);
+}
+
+function buildSmoothPath(points: Array<{ x: number; y: number }>) {
+  if (!points.length) return '';
+  if (points.length === 1) return `M ${points[0].x} ${points[0].y}`;
+  let path = `M ${points[0].x} ${points[0].y}`;
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const previous = points[index - 1] ?? points[index];
+    const current = points[index];
+    const next = points[index + 1];
+    const afterNext = points[index + 2] ?? next;
+    const controlOne = {
+      x: current.x + (next.x - previous.x) / 6,
+      y: current.y + (next.y - previous.y) / 6,
+    };
+    const controlTwo = {
+      x: next.x - (afterNext.x - current.x) / 6,
+      y: next.y - (afterNext.y - current.y) / 6,
+    };
+    path += ` C ${controlOne.x} ${controlOne.y}, ${controlTwo.x} ${controlTwo.y}, ${next.x} ${next.y}`;
+  }
+  return path;
 }
 
 function clamp(value: number, min: number, max: number) {
@@ -246,9 +278,11 @@ function getBuySignal(points: ChartPoint[], stat?: MarketStat) {
   return { shouldBuy, confidence, current, baseline, discount, changeFromBaseline, trend };
 }
 
-function HistoryPanel({ points, loading, category, median, onSaveMedian, medianEditorOpen, onCloseMedianEditor }: { points: ChartPoint[]; loading: boolean; category: Category; median: number | null; onSaveMedian: (value: number | null) => void; medianEditorOpen: boolean; onCloseMedianEditor: () => void }) {
+function HistoryPanel({ points, loading, category, range, onRangeChange, median, onSaveMedian, medianEditorOpen, onCloseMedianEditor }: { points: ChartPoint[]; loading: boolean; category: Category; range: Range; onRangeChange: (range: Range) => void; median: number | null; onSaveMedian: (value: number | null) => void; medianEditorOpen: boolean; onCloseMedianEditor: () => void }) {
   const chartPoints = points.filter((point) => isCategory(point.category) && point.category === category);
-  const candles = buildCandlePoints(chartPoints);
+  const renderPoints = chartPoints.length > 240
+    ? chartPoints.filter((_, index) => index % Math.ceil(chartPoints.length / 240) === 0 || index === chartPoints.length - 1)
+    : chartPoints;
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const [medianInput, setMedianInput] = useState(median == null ? '' : String(median));
   const [medianInputDirty, setMedianInputDirty] = useState(false);
@@ -271,26 +305,45 @@ function HistoryPanel({ points, loading, category, median, onSaveMedian, medianE
       onCloseMedianEditor();
     }
   };
-  const chartPrices = candles.flatMap((point) => [point.high, point.low]);
-  const chartMax = chartPrices.length ? Math.max(...chartPrices) : 1;
-  const chartMin = chartPrices.length ? Math.min(...chartPrices) : 0;
+  const chartPrices = renderPoints.flatMap((point) => [point.high, point.low]);
+  const dataMax = chartPrices.length ? Math.max(...chartPrices) : 1;
+  const dataMin = chartPrices.length ? Math.min(...chartPrices) : 0;
+  const dataRange = Math.max(dataMax - dataMin, 1);
+  const chartMax = dataMax + dataRange * 0.08;
+  const chartMin = Math.max(0, dataMin - dataRange * 0.08);
   const chartRange = Math.max(chartMax - chartMin, Number.EPSILON);
-  const plotLeft = 24;
-  const plotRight = 858;
-  const plotTop = 42;
-  const plotBottom = 224;
+  const plotLeft = 54;
+  const plotRight = 930;
+  const plotTop = 28;
+  const plotBottom = 276;
   const plotWidth = plotRight - plotLeft;
   const plotHeight = plotBottom - plotTop;
   const priceToY = (price: number) => plotTop + ((chartMax - price) / chartRange) * plotHeight;
-  const hoveredPoint = hoveredIndex == null ? null : candles[hoveredIndex];
-  const hoveredRatio = hoveredIndex == null ? 0.5 : hoveredIndex / Math.max(candles.length - 1, 1);
+  const linePoints = renderPoints.map((point, index) => ({
+    x: renderPoints.length === 1 ? plotLeft + plotWidth / 2 : plotLeft + (index / (renderPoints.length - 1)) * plotWidth,
+    y: priceToY(point.close),
+  }));
+  const linePath = buildSmoothPath(linePoints);
+  const areaPath = linePath ? `${linePath} L ${linePoints[linePoints.length - 1].x} ${plotBottom} L ${linePoints[0].x} ${plotBottom} Z` : '';
+  const hoveredPoint = hoveredIndex == null ? null : renderPoints[hoveredIndex];
+  const hoveredRatio = hoveredIndex == null ? 0.5 : hoveredIndex / Math.max(renderPoints.length - 1, 1);
   const tooltipAtStart = hoveredRatio < 0.18;
   const tooltipAtEnd = hoveredRatio > 0.82;
   const tooltipPositionClass = tooltipAtStart ? 'left-0' : tooltipAtEnd ? 'right-0' : 'left-1/2 -translate-x-1/2';
   const tooltipPositionStyle = tooltipAtStart || tooltipAtEnd ? undefined : { left: `${hoveredRatio * 100}%` };
   const yLabels = Array.from({ length: 5 }, (_, index) => chartMax - (chartRange * index) / 4);
   return (
-    <section className="relative min-w-0 bg-[#12161d]">
+    <section className="panel relative min-w-0 overflow-hidden rounded-xl">
+      <div className="flex flex-col gap-4 border-b border-[hsl(var(--card-border))] p-4 sm:flex-row sm:items-start sm:justify-between sm:p-5">
+        <div>
+          <p className="mono text-[10px] uppercase tracking-[.2em] text-[hsl(var(--accent))]">auction house price</p>
+          <h2 className="display mt-1 text-lg font-bold tracking-tight">Observed Elytra price</h2>
+          <p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">Showing item value trends for the selected range</p>
+        </div>
+        <div className="flex max-w-full gap-1 overflow-x-auto rounded-lg border border-[hsl(var(--card-border))] bg-[hsl(var(--secondary)/.5)] p-1" role="tablist" aria-label="Price history range">
+          {HISTORY_RANGES.map((option) => <button key={option.value} type="button" role="tab" aria-selected={range === option.value} data-testid={`button-history-range-${option.value}`} onClick={() => { setHoveredIndex(null); onRangeChange(option.value); }} className={`shrink-0 rounded-md px-2.5 py-1.5 text-[10px] font-semibold transition-colors sm:px-3 ${range === option.value ? 'bg-[hsl(var(--card))] text-[hsl(var(--foreground))] shadow-sm' : 'text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]'}`}>{option.label}</button>)}
+        </div>
+      </div>
       {medianEditorOpen && <div className="absolute right-2 top-2 z-40 flex items-end gap-2 bg-[#12161d] p-2">
         <label className="text-left">
           <span className="mono block text-[9px] uppercase tracking-wider text-[hsl(var(--muted-foreground))]">median benchmark</span>
@@ -299,48 +352,39 @@ function HistoryPanel({ points, loading, category, median, onSaveMedian, medianE
         <button type="button" data-testid="button-save-median" onClick={saveMedian} className="h-[31px] bg-[hsl(var(--primary))] px-2.5 text-[10px] font-bold text-[hsl(var(--primary-foreground))]"><Check size={12} /></button>
         {median != null && <button type="button" data-testid="button-reset-median" onClick={() => { setMedianInput(''); setMedianInputDirty(false); onSaveMedian(null); onCloseMedianEditor(); }} className="h-[31px] bg-[#1b222c] px-2 text-[10px] font-semibold text-[hsl(var(--muted-foreground))]">Reset</button>}
       </div>}
-      {loading ? <div className="h-[280px] w-full bg-[#12161d]" /> : candles.length < 1 ? (
+      {loading ? <div className="h-[340px] w-full bg-[#12161d]" /> : renderPoints.length < 1 ? (
         <div data-testid="empty-history" className="flex h-[280px] items-center justify-center bg-[#12161d] text-center text-xs text-[hsl(var(--muted-foreground))]">No price observations</div>
       ) : (
-        <div className="relative h-[280px] w-full overflow-hidden bg-[#12161d]">
+        <div className="relative h-[340px] w-full overflow-hidden bg-[#12161d]">
           {hoveredPoint && <div className={`pointer-events-none absolute top-0 z-30 w-48 bg-[#242b36] px-3 py-2 ${tooltipPositionClass}`} style={tooltipPositionStyle}>
             <p className="mono text-[9px] text-[hsl(var(--muted-foreground))]">{formatTime(hoveredPoint.timestamp, true)}</p>
-            <div className="mt-1.5 grid grid-cols-2 gap-x-3 gap-y-0.5 text-[10px]">
-              <span className="text-[hsl(var(--muted-foreground))]">Open <strong className="mono font-normal text-[hsl(var(--foreground))]">{formatChartValue(hoveredPoint.open)}</strong></span>
-              <span className="text-[hsl(var(--muted-foreground))]">Close <strong className="mono font-bold text-[hsl(var(--foreground))]">{formatChartValue(hoveredPoint.close)}</strong></span>
-              <span className="text-[hsl(var(--muted-foreground))]">High <strong className="mono font-normal text-[hsl(var(--chart-3))]">{formatChartValue(hoveredPoint.high)}</strong></span>
-              <span className="text-[hsl(var(--muted-foreground))]">Low <strong className="mono font-normal text-[hsl(var(--destructive))]">{formatChartValue(hoveredPoint.low)}</strong></span>
-            </div>
-            <p className="mt-1.5 mono text-[9px] text-[hsl(var(--muted-foreground))]">{formatChartValue(hoveredPoint.observationCount)} observations</p>
+            <p className="mt-1 text-lg font-bold text-[hsl(var(--foreground))]">{formatChartValue(hoveredPoint.close)} coins</p>
+            <p className="mt-1 mono text-[9px] text-[hsl(var(--muted-foreground))]">{formatChartValue(hoveredPoint.observationCount)} observations · low {formatChartValue(hoveredPoint.low)}</p>
           </div>}
-          <svg viewBox="0 0 1000 280" className="block h-full w-full" role="img" aria-label="Elytra price candlestick chart">
+          <svg viewBox="0 0 1000 340" className="block h-full w-full text-[hsl(var(--muted-foreground))]" role="img" aria-label={`Elytra price line chart for ${HISTORY_RANGES.find((option) => option.value === range)?.label}`}>
+            <defs>
+              <linearGradient id="history-area-fill" x1="0" x2="0" y1="0" y2="1">
+                <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity=".18" />
+                <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity="0" />
+              </linearGradient>
+            </defs>
             {yLabels.map((value, index) => {
               const ratio = index / (yLabels.length - 1);
               const y = plotTop + ratio * plotHeight;
-              return <g key={`${value}-${index}`}><line x1={plotLeft} x2={plotRight} y1={y} y2={y} stroke="currentColor" strokeDasharray="2 6" strokeOpacity=".22" /><text x="875" y={y + 3} fill="currentColor" fillOpacity=".7" fontFamily="var(--app-font-mono)" fontSize="10">{formatChartValue(value)}</text></g>;
+              return <g key={`${value}-${index}`}><line x1={plotLeft} x2={plotRight} y1={y} y2={y} stroke="currentColor" strokeDasharray="2 6" strokeOpacity=".22" /><text x="944" y={y + 3} fill="currentColor" fillOpacity=".7" fontFamily="var(--app-font-mono)" fontSize="10">{formatChartValue(value)}</text></g>;
             })}
-            {candles.map((point, index) => {
-              const slotWidth = plotWidth / candles.length;
-              const centerX = plotLeft + (index + 0.5) * slotWidth;
-              const isRising = point.close >= point.open;
-              const color = isRising ? 'hsl(var(--chart-3))' : 'hsl(var(--destructive))';
-              const wickTop = priceToY(point.high);
-              const wickBottom = priceToY(point.low);
-              const bodyTop = priceToY(Math.max(point.open, point.close));
-              const bodyBottom = priceToY(Math.min(point.open, point.close));
-              const bodyHeight = Math.max(bodyBottom - bodyTop, 1.5);
-              const bodyWidth = Math.min(10, Math.max(2, slotWidth * 0.42));
-              const x = centerX - bodyWidth / 2;
+            <path d={areaPath} fill="url(#history-area-fill)" />
+            <path d={linePath} fill="none" stroke="hsl(var(--foreground))" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" />
+            {renderPoints.map((point, index) => {
+              const linePoint = linePoints[index];
               return <g key={`${point.timestamp}-${index}`} onPointerEnter={() => setHoveredIndex(index)} onPointerLeave={() => setHoveredIndex(null)} onFocus={() => setHoveredIndex(index)} onBlur={() => setHoveredIndex(null)}>
-                <rect x={plotLeft + index * slotWidth} y={plotTop} width={slotWidth} height={plotHeight} fill="transparent" tabIndex={0} role="button" aria-label={`${formatTime(point.timestamp, true)} at ${formatChartValue(point.close)}`} />
-                {hoveredIndex === index && <line x1={centerX} x2={centerX} y1={plotTop} y2={plotBottom} stroke="currentColor" strokeDasharray="2 5" strokeOpacity=".45" />}
-                <line x1={centerX} x2={centerX} y1={wickTop} y2={wickBottom} stroke={color} strokeWidth="1" />
-                <rect x={x} y={bodyTop} width={bodyWidth} height={bodyHeight} fill={color} />
+                <rect x={linePoint.x - Math.max(plotWidth / renderPoints.length / 2, 7)} y={plotTop} width={Math.max(plotWidth / renderPoints.length, 14)} height={plotHeight} fill="transparent" tabIndex={0} role="button" aria-label={`${formatTime(point.timestamp, true)} at ${formatChartValue(point.close)}`} />
+                {hoveredIndex === index && <><line x1={linePoint.x} x2={linePoint.x} y1={plotTop} y2={plotBottom} stroke="currentColor" strokeDasharray="2 5" strokeOpacity=".45" /><circle cx={linePoint.x} cy={linePoint.y} r="5" fill="hsl(var(--primary))" stroke="hsl(var(--foreground))" strokeWidth="2" /></>}
               </g>;
             })}
-            {[candles[0], candles[Math.floor((candles.length - 1) / 2)], candles[candles.length - 1]].map((point, index) => {
+            {[renderPoints[0], renderPoints[Math.floor((renderPoints.length - 1) / 2)], renderPoints[renderPoints.length - 1]].map((point, index) => {
               const x = index === 0 ? plotLeft : index === 1 ? plotLeft + plotWidth / 2 : plotRight;
-              return <text key={`${point.timestamp}-${index}`} x={x} y="262" textAnchor={index === 0 ? 'start' : index === 2 ? 'end' : 'middle'} fill="currentColor" fillOpacity=".7" fontFamily="var(--app-font-mono)" fontSize="10">{formatTime(point.timestamp)}</text>;
+              return <text key={`${point.timestamp}-${index}`} x={x} y="320" textAnchor={index === 0 ? 'start' : index === 2 ? 'end' : 'middle'} fill="currentColor" fillOpacity=".7" fontFamily="var(--app-font-mono)" fontSize="10">{formatChartAxisTime(point.timestamp, range)}</text>;
             })}
           </svg>
         </div>
@@ -528,7 +572,7 @@ function AlertsPanel({ alerts, loading, threshold, onSaveThreshold }: { alerts: 
 
 export default function Dashboard() {
   const [category, setCategory] = useState<Category>(CATEGORIES[0]);
-  const historyRange: Range = 'seven_days';
+  const [historyRange, setHistoryRange] = useState<Range>('today');
   const [listingCategory] = useState<Category>(CATEGORIES[0]);
   const [transactionCategory] = useState<Category>(CATEGORIES[0]);
   const [listingSort, setListingSort] = useState<ListingSort>('recent');
@@ -577,7 +621,6 @@ export default function Dashboard() {
       <div className="mx-auto max-w-[1560px] px-4 pb-10 pt-6 sm:px-6 lg:px-8">
         <div className="fade-up"><ApiBanner api={dashboard?.api} generatedAt={dashboard?.generatedAt} isError={!!dashboardQuery.isError} onRetry={refetchAll} /></div>
          <div className="fade-up-delay mt-7 flex flex-col justify-between gap-4 md:flex-row md:items-end"><div><p className="mono text-[10px] uppercase tracking-[.24em] text-[hsl(var(--accent))]">live inventory monitor</p><h1 className="display mt-2 text-3xl font-bold tracking-[-.04em] sm:text-4xl">The Elytra market read.</h1><p className="mt-2 max-w-2xl text-sm leading-6 text-[hsl(var(--muted-foreground))]">A clean view of what the market is reporting now. Direct Elytra listings only, with no enchantment filter and no synthetic trend lines.</p></div><div className="flex items-center gap-2 text-xs text-[hsl(var(--muted-foreground))]"><DatabaseZap size={14} className="text-[hsl(var(--primary))]" /><span className="mono">{dashboard ? `${formatNumber(dashboard.qualifyingListings)} active units` : 'awaiting inventory count'}</span></div></div>
-          {dashboardQuery.isLoading ? <div className="mt-6 grid gap-3 md:grid-cols-1"><Skeleton className="h-48 rounded-xl" /></div> : dashboardQuery.isError && !dashboard ? <div data-testid="error-dashboard" className="panel amber-rule mt-6 rounded-xl p-8 text-center"><ServerCrash size={25} className="mx-auto text-[hsl(var(--accent))]" /><h2 className="display mt-3 text-lg font-bold">Market snapshot unavailable</h2><p className="mx-auto mt-2 max-w-md text-sm text-[hsl(var(--muted-foreground))]">The dashboard endpoint is offline. Nothing is being inferred from missing data.</p><button type="button" data-testid="button-retry-dashboard-empty" onClick={refetchAll} className="mt-5 inline-flex items-center gap-2 rounded-lg bg-[hsl(var(--primary))] px-4 py-2 text-xs font-bold text-[hsl(var(--primary-foreground))]"><RefreshCw size={14} /> Retry connection</button></div> : <><div className="fade-up-delay-2 mt-6 grid gap-3">{CATEGORIES.map((item) => <StatCard key={item} category={item} stat={stats.find((stat) => stat.category === item)} benchmarkMedian={customMedian ?? stats.find((stat) => stat.category === item)?.lowest ?? null} hasCustomMedian={customMedian != null} selected={category === item} onSelect={() => setCategory(item)} onEditMedian={() => setMedianEditorOpen(true)} />)}</div><div className="mt-6 grid gap-4 xl:grid-cols-[minmax(0,1.65fr)_minmax(300px,.8fr)]"><HistoryPanel points={history} loading={historyQuery.isLoading} category={category} median={benchmarkMedian} onSaveMedian={saveMedian} medianEditorOpen={medianEditorOpen} onCloseMedianEditor={() => setMedianEditorOpen(false)} /><div className="grid gap-4"><PredictionPanel points={history} stat={selectedStat} median={benchmarkMedian} medianIsCustom={customMedian != null} loading={historyQuery.isLoading} /><AlertsPanel alerts={alerts} loading={alertsQuery.isLoading} threshold={alertThreshold} onSaveThreshold={saveAlertThreshold} /></div></div><div className="mt-4 grid gap-4 xl:grid-cols-[1.15fr_1fr]"><ListingsPanel listings={listings} loading={listingsQuery.isLoading} category={listingCategory} sort={listingSort} setSort={setListingSort} /><TransactionsPanel transactions={transactions} loading={transactionsQuery.isLoading} category={transactionCategory} /></div></>} 
          <footer className="mt-7 flex flex-col gap-2 border-t border-[hsl(var(--border))] pt-4 text-[10px] text-[hsl(var(--muted-foreground))] sm:flex-row sm:items-center sm:justify-between"><span className="inline-flex items-center gap-2"><Check size={13} className="text-[hsl(var(--chart-3))]" /> Live scope locked to DonutSMP Elytra search</span><span className="mono">{dashboard?.generatedAt ? `snapshot generated ${formatTime(dashboard.generatedAt, true)}` : 'snapshot time unavailable'}</span></footer>
       </div>
     </main>

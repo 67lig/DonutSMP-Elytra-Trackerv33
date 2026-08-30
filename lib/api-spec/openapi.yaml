@@ -183,7 +183,7 @@ components:
       enum: [elytra]
     TimeRange:
       type: string
-      enum: [five_minutes, hour, today, seven_days, thirty_days, one_year]
+      enum: [five_minutes, today, seven_days, thirty_days, ninety_days, one_year, all_time]
     ElytraStats:
       type: object
       properties:

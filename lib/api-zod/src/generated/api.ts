@@ -49,7 +49,7 @@ export const GetElytraDashboardResponse = zod.object({
  */
 export const GetElytraHistoryQueryParams = zod.object({
   "category": zod.enum(['elytra']).optional(),
-  "range": zod.enum(['five_minutes', 'hour', 'today', 'seven_days', 'thirty_days', 'one_year']).optional()
+  "range": zod.enum(['five_minutes', 'today', 'seven_days', 'thirty_days', 'ninety_days', 'one_year', 'all_time']).optional()
 })
 
 export const GetElytraHistoryResponseItem = zod.object({

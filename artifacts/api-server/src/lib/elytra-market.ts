@@ -627,11 +627,12 @@ export class ElytraMarketService {
   async getHistory(category?: ElytraCategory, range = "thirty_days") {
     const cutoff = new Date();
     const duration = range === "five_minutes" ? 300_000 :
-      range === "hour" ? 3_600_000 :
-        range === "today" ? 86_400_000 :
-          range === "seven_days" ? 604_800_000 :
-            range === "one_year" ? 31_536_000_000 : 2_592_000_000;
-    cutoff.setTime(cutoff.getTime() - duration);
+      range === "today" ? 86_400_000 :
+        range === "seven_days" ? 604_800_000 :
+          range === "thirty_days" ? 2_592_000_000 :
+            range === "ninety_days" ? 7_776_000_000 :
+              range === "one_year" ? 31_536_000_000 : 0;
+    if (duration > 0) cutoff.setTime(cutoff.getTime() - duration);
     const observationRows = await db.select().from(priceObservationsTable)
       .orderBy(asc(priceObservationsTable.timestamp));
     const snapshots = observationRows
@@ -647,11 +648,12 @@ export class ElytraMarketService {
     const source = snapshots;
     if (!source.length) return [];
 
-    const requestedBucketMs = range === "five_minutes" ? 60_000 :
-      range === "hour" ? 5 * 60_000 :
-        range === "today" ? 60 * 60_000 :
-          range === "seven_days" ? 6 * 60 * 60_000 :
-            range === "one_year" ? 7 * 86_400_000 : 24 * 60 * 60_000;
+    const requestedBucketMs = range === "five_minutes" ? 15_000 :
+      range === "today" ? 60 * 60_000 :
+        range === "seven_days" ? 6 * 60 * 60_000 :
+          range === "thirty_days" ? 12 * 60 * 60_000 :
+            range === "ninety_days" ? 24 * 60 * 60_000 :
+              range === "one_year" ? 7 * 86_400_000 : 30 * 86_400_000;
     const timeSpan = source[source.length - 1].timestamp.getTime() - source[0].timestamp.getTime();
     const bucketMs = timeSpan > requestedBucketMs ? requestedBucketMs : 0;
     const buckets = new Map<number, typeof source>();
