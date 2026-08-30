@@ -17,12 +17,14 @@ import {
   useGetElytraHistory,
   useGetElytraListings,
   useGetElytraTransactions,
+  useAnalyzeElytraMarket,
 } from '@workspace/api-client-react';
 
 const CATEGORIES = ['elytra'] as const;
 type Category = typeof CATEGORIES[number];
 const HISTORY_RANGES = [
   { value: 'five_minutes', label: 'Last 5 minutes' },
+  { value: 'hour', label: '1 hour' },
   { value: 'today', label: 'Today' },
   { value: 'seven_days', label: '7 days' },
   { value: 'thirty_days', label: '30 days' },
@@ -254,30 +256,6 @@ function buildSmoothPath(points: Array<{ x: number; y: number }>) {
   return path;
 }
 
-function clamp(value: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, value));
-}
-
-function getBuySignal(points: ChartPoint[], stat?: MarketStat) {
-  const prices = points.map((point) => point.price).filter((price) => Number.isFinite(price));
-  if (!prices.length) {
-    return { shouldBuy: false, confidence: 0, current: null, baseline: null, discount: null, changeFromBaseline: null, trend: null };
-  }
-
-  const current = prices[prices.length - 1];
-  const recent = prices.slice(-Math.min(8, prices.length));
-  const baseline = stat?.median ?? stat?.average ?? recent.reduce((sum, price) => sum + price, 0) / recent.length;
-  const discount = ((baseline - current) / baseline) * 100;
-  const changeFromBaseline = ((current - baseline) / baseline) * 100;
-  const trend = ((current - prices[0]) / prices[0]) * 100;
-  const recentTrend = ((current - recent[0]) / recent[0]) * 100;
-  const score = prices.length === 1 ? discount : discount * 0.72 - recentTrend * 0.28;
-  const shouldBuy = score > 0.35;
-  const confidence = clamp(Math.round((prices.length === 1 ? 42 : 56) + Math.min(prices.length, 18) + Math.min(Math.abs(score) * 2.2, 18) + (stat?.median != null ? 5 : 0)), 0, 94);
-
-  return { shouldBuy, confidence, current, baseline, discount, changeFromBaseline, trend };
-}
-
 function HistoryPanel({ points, loading, category, range, onRangeChange, median, onSaveMedian, medianEditorOpen, onCloseMedianEditor }: { points: ChartPoint[]; loading: boolean; category: Category; range: Range; onRangeChange: (range: Range) => void; median: number | null; onSaveMedian: (value: number | null) => void; medianEditorOpen: boolean; onCloseMedianEditor: () => void }) {
   const chartPoints = points.filter((point) => isCategory(point.category) && point.category === category);
   const renderPoints = chartPoints.length > 240
@@ -393,49 +371,76 @@ function HistoryPanel({ points, loading, category, range, onRangeChange, median,
   );
 }
 
-function PredictionPanel({ points, stat, loading, median, medianIsCustom }: { points: ChartPoint[]; stat?: MarketStat; loading: boolean; median: number | null; medianIsCustom: boolean }) {
-  const signalStat = median == null
-    ? stat
-    : stat
-      ? { ...stat, median }
-      : { lowest: null, highest: null, average: null, median, activeListings: 0, priceChange: null, currency: 'coins' };
-  const signal = getBuySignal(points, signalStat);
-  const hasSignal = signal.current != null && signal.baseline != null;
-  const positive = signal.shouldBuy && hasSignal;
+type MarketAnalysis = {
+  recommendation: 'YES' | 'NO';
+  confidence: number;
+  summary: string;
+  reasons: string[];
+  risks: string[];
+  marketContext: { lowest: number | null; median: number | null; average: number | null; priceChange: number | null; activeListings: number; recentPrices: number[] };
+  source: { auctionPages: number[]; historyRange: Range };
+  usage: { used: number; remaining: number; limit: number };
+};
+
+function PredictionPanel({ range, loading }: { range: Range; loading: boolean }) {
+  const marketAnalysis = useAnalyzeElytraMarket();
+  const analysis = marketAnalysis.data as MarketAnalysis | undefined;
+  const error = marketAnalysis.error as { message?: string; data?: { error?: string } } | null;
+  const positive = analysis?.recommendation === 'YES';
+  const rangeLabel = HISTORY_RANGES.find((option) => option.value === (analysis?.source.historyRange ?? range))?.label ?? 'selected range';
+  const remaining = analysis?.usage.remaining;
+
+  useEffect(() => {
+    marketAnalysis.reset();
+  }, [range]);
+
+  const askAi = () => {
+    marketAnalysis.reset();
+    marketAnalysis.mutate({ data: { range } });
+  };
+
   return (
-    <section className={`panel min-w-0 rounded-xl p-4 sm:p-5 ${positive ? 'cyan-rule' : 'amber-rule'}`}>
+    <section className={`panel min-w-0 rounded-xl p-4 sm:p-5 ${positive ? 'cyan-rule' : 'amber-rule'}`} data-testid="panel-ai-prediction">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="mono text-[10px] uppercase tracking-[.2em] text-[hsl(var(--accent))]">market signal</p>
-          <h2 className="display mt-1 text-lg font-bold tracking-tight">Should you buy?</h2>
-          <p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">A quick read from observed price behavior</p>
+          <p className="mono text-[10px] uppercase tracking-[.2em] text-[hsl(var(--accent))]">AI prediction</p>
+          <h2 className="display mt-1 text-lg font-bold tracking-tight">Should you buy or sell?</h2>
+          <p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">Gemini reads auction pages 1 + 2 and the selected price graph</p>
         </div>
-        <span className={`rounded-lg p-2 ${positive ? 'bg-[hsl(var(--chart-3)/.12)] text-[hsl(var(--chart-3))]' : 'bg-[hsl(var(--accent)/.12)] text-[hsl(var(--accent))]'}`}><Sparkles size={17} /></span>
+        <span className="rounded-lg bg-[hsl(var(--primary)/.14)] p-2 text-[hsl(var(--primary))]"><Sparkles size={17} /></span>
       </div>
-      {loading ? <div className="mt-6 space-y-3"><Skeleton className="h-14 w-full" /><Skeleton className="h-4 w-2/3" /><Skeleton className="h-2 w-full" /></div> : !hasSignal ? (
-        <div className="mt-6 rounded-lg border border-dashed border-[hsl(var(--card-border))] p-4 text-center"><Target size={20} className="mx-auto text-[hsl(var(--muted-foreground))]" /><p className="mt-2 text-sm font-semibold">Waiting for a signal</p><p className="mt-1 text-xs leading-5 text-[hsl(var(--muted-foreground))]">A current market price or observed median is needed before making a comparison.</p></div>
-      ) : (
+      {loading ? <div className="mt-6 space-y-3"><Skeleton className="h-14 w-full" /><Skeleton className="h-4 w-2/3" /><Skeleton className="h-2 w-full" /></div> : marketAnalysis.isPending ? <div className="mt-6 space-y-3"><Skeleton className="h-16 w-full" /><Skeleton className="h-4 w-11/12" /><Skeleton className="h-2 w-full" /><p className="mono text-[10px] text-[hsl(var(--primary))]">Sending live market context to Gemini…</p></div> : (
         <>
-          <div className="mt-6 flex items-end justify-between gap-3">
-            <div>
-              <p className="mono text-[10px] uppercase tracking-wider text-[hsl(var(--muted-foreground))]">recommendation</p>
-              <p data-testid="text-buy-recommendation" className={`display mt-1 text-4xl font-bold tracking-[-.05em] ${positive ? 'text-[hsl(var(--chart-3))]' : 'text-[hsl(var(--accent))]'}`}>{positive ? 'YES' : 'NO'}</p>
+          {analysis ? <div className="mt-6">
+            <div className="flex items-end justify-between gap-3">
+              <div>
+                <p className="mono text-[10px] uppercase tracking-wider text-[hsl(var(--muted-foreground))]">AI recommendation</p>
+                <p data-testid="text-ai-recommendation" className={`display mt-1 text-5xl font-bold tracking-[-.06em] ${positive ? 'text-[hsl(var(--chart-3))]' : 'text-[hsl(var(--accent))]'}`}>{analysis.recommendation}</p>
+              </div>
+              <div className="text-right">
+                <p className="mono text-[10px] uppercase tracking-wider text-[hsl(var(--muted-foreground))]">confidence</p>
+                <p data-testid="text-ai-confidence" className="display mt-1 text-3xl font-bold">{analysis.confidence}%</p>
+              </div>
             </div>
-            <div className="text-right">
-              <p className="mono text-[10px] uppercase tracking-wider text-[hsl(var(--muted-foreground))]">estimated accuracy</p>
-              <p data-testid="text-buy-confidence" className="display mt-1 text-2xl font-bold">{signal.confidence}%</p>
+            <div className="mt-4">
+              <div className="mb-2 flex justify-between text-[10px]"><span className="text-[hsl(var(--muted-foreground))]">model confidence</span><span className="mono">{analysis.confidence}%</span></div>
+              <div className="h-2 overflow-hidden rounded-full bg-[hsl(var(--secondary))]"><div className={`h-full rounded-full transition-all ${positive ? 'bg-[hsl(var(--chart-3))]' : 'bg-[hsl(var(--accent))]'}`} style={{ width: `${analysis.confidence}%` }} /></div>
             </div>
-          </div>
-          <div className="mt-4">
-            <div className="mb-2 flex justify-between text-[10px]"><span className="text-[hsl(var(--muted-foreground))]">signal confidence</span><span className="mono">{signal.confidence}%</span></div>
-            <div className="h-2 overflow-hidden rounded-full bg-[hsl(var(--secondary))]"><div className={`h-full rounded-full transition-all ${positive ? 'bg-[hsl(var(--chart-3))]' : 'bg-[hsl(var(--accent))]'}`} style={{ width: `${signal.confidence}%` }} /></div>
-          </div>
-          <div className="mt-5 space-y-2 border-t border-[hsl(var(--card-border))] pt-4 text-xs">
-            <div className="flex items-center justify-between gap-2"><span className="text-[hsl(var(--muted-foreground))]">latest price</span><span className="mono">{formatPrice(signal.current)}</span></div>
-             <div className="flex items-center justify-between gap-2"><span className="text-[hsl(var(--muted-foreground))]">{medianIsCustom ? 'your median' : 'cheapest benchmark'}</span><span className="mono">{formatPrice(signal.baseline)}</span></div>
-            <div className="flex items-center justify-between gap-2"><span className="text-[hsl(var(--muted-foreground))]">vs. median</span><span className={signal.changeFromBaseline >= 0 ? 'text-[hsl(var(--chart-3))]' : 'text-[hsl(var(--destructive))]'}>{signal.changeFromBaseline >= 0 ? '+' : ''}{signal.changeFromBaseline.toFixed(1)}%</span></div>
-          </div>
-          <p className="mt-4 flex items-start gap-2 text-[10px] leading-4 text-[hsl(var(--muted-foreground))]"><Info size={13} className="mt-0.5 shrink-0 text-[hsl(var(--primary))]" /> Heuristic confidence, not a guarantee. It weighs current price against the observed median and recent momentum.</p>
+            <p className="mt-4 text-sm leading-6">{analysis.summary}</p>
+            <div className="mt-4 grid grid-cols-2 gap-2 border-t border-[hsl(var(--card-border))] pt-4 text-xs">
+              <div><span className="text-[hsl(var(--muted-foreground))]">market low </span><span className="mono">{formatPrice(analysis.marketContext.lowest)}</span></div>
+              <div className="text-right"><span className="text-[hsl(var(--muted-foreground))]">range </span><span className="mono">{rangeLabel}</span></div>
+              {analysis.marketContext.priceChange != null && <div><span className="text-[hsl(var(--muted-foreground))]">graph move </span><span className={analysis.marketContext.priceChange >= 0 ? 'text-[hsl(var(--destructive))]' : 'text-[hsl(var(--chart-3))]'}>{analysis.marketContext.priceChange >= 0 ? '+' : ''}{analysis.marketContext.priceChange.toFixed(1)}%</span></div>}
+              <div className="text-right"><span className="text-[hsl(var(--muted-foreground))]">AI uses left </span><span className="mono">{analysis.usage.remaining}/{analysis.usage.limit}</span></div>
+            </div>
+            <div className="mt-4 grid gap-2 text-[10px] leading-4 text-[hsl(var(--muted-foreground))] sm:grid-cols-2">
+              <p><span className="text-[hsl(var(--chart-3))]">Why: </span>{analysis.reasons[0] ?? 'The model found mixed evidence.'}</p>
+              <p><span className="text-[hsl(var(--accent))]">Risk: </span>{analysis.risks[0] ?? 'Market conditions can change quickly.'}</p>
+            </div>
+          </div> : <div className="mt-6 rounded-lg border border-dashed border-[hsl(var(--card-border))] p-4 text-center"><Target size={20} className="mx-auto text-[hsl(var(--primary))]" /><p className="mt-2 text-sm font-semibold">Ask the AI for the market call</p><p className="mt-1 text-xs leading-5 text-[hsl(var(--muted-foreground))]">It will compare live auction pages 1 and 2 with the {HISTORY_RANGES.find((option) => option.value === range)?.label.toLowerCase()} graph and return only YES or NO.</p></div>}
+          {error && <div data-testid="error-ai-prediction" className="mt-4 rounded-lg border border-[hsl(var(--destructive)/.3)] bg-[hsl(var(--destructive)/.08)] p-3 text-xs"><p className="font-bold">AI prediction unavailable</p><p className="mt-1 text-[hsl(var(--muted-foreground))]">{error.data?.error ?? error.message ?? 'Gemini could not complete the market analysis.'}</p></div>}
+          <button type="button" data-testid="button-ask-ai" onClick={askAi} disabled={marketAnalysis.isPending || remaining === 0} className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[hsl(var(--primary))] px-4 py-2.5 text-xs font-bold text-[hsl(var(--primary-foreground))] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-45"><Sparkles size={14} />{remaining === 0 ? 'Hourly AI limit reached' : analysis ? 'Ask AI again' : 'Ask AI: buy or sell?'}</button>
+          <p className="mt-3 flex items-start gap-2 text-[10px] leading-4 text-[hsl(var(--muted-foreground))]"><Info size={13} className="mt-0.5 shrink-0 text-[hsl(var(--primary))]" /> AI output is a market signal, not a guarantee. Five analyses are available per rolling hour.</p>
         </>
       )}
     </section>
@@ -572,7 +577,7 @@ function AlertsPanel({ alerts, loading, threshold, onSaveThreshold }: { alerts: 
 
 export default function Dashboard() {
   const [category, setCategory] = useState<Category>(CATEGORIES[0]);
-  const [historyRange, setHistoryRange] = useState<Range>('today');
+   const [historyRange, setHistoryRange] = useState<Range>('hour');
   const [listingCategory] = useState<Category>(CATEGORIES[0]);
   const [transactionCategory] = useState<Category>(CATEGORIES[0]);
   const [listingSort, setListingSort] = useState<ListingSort>('recent');
@@ -580,7 +585,7 @@ export default function Dashboard() {
   const [customMedian, setCustomMedian] = useState<number | null>(() => readStoredNumber(SETTINGS_STORAGE_KEYS.median, null));
   const [alertThreshold, setAlertThreshold] = useState(() => Math.floor(readStoredNumber(SETTINGS_STORAGE_KEYS.alertThreshold, 10) ?? 10));
 
-  const historyParams = useMemo(() => ({ range: historyRange, category }), [category]);
+   const historyParams = useMemo(() => ({ range: historyRange, category }), [category, historyRange]);
   const listingParams = useMemo(() => ({ sort: listingSort, category: listingCategory }), [listingCategory, listingSort]);
   const transactionParams = useMemo(() => ({ category: transactionCategory }), [transactionCategory]);
   const alertParams = useMemo(() => ({ limit: 8, threshold: alertThreshold }), [alertThreshold]);
@@ -621,7 +626,7 @@ export default function Dashboard() {
       <div className="mx-auto max-w-[1560px] px-4 pb-10 pt-6 sm:px-6 lg:px-8">
         <div className="fade-up"><ApiBanner api={dashboard?.api} generatedAt={dashboard?.generatedAt} isError={!!dashboardQuery.isError} onRetry={refetchAll} /></div>
          <div className="fade-up-delay mt-7 flex flex-col justify-between gap-4 md:flex-row md:items-end"><div><p className="mono text-[10px] uppercase tracking-[.24em] text-[hsl(var(--accent))]">live inventory monitor</p><h1 className="display mt-2 text-3xl font-bold tracking-[-.04em] sm:text-4xl">The Elytra market read.</h1><p className="mt-2 max-w-2xl text-sm leading-6 text-[hsl(var(--muted-foreground))]">A clean view of what the market is reporting now. Direct Elytra listings only, with no enchantment filter and no synthetic trend lines.</p></div><div className="flex items-center gap-2 text-xs text-[hsl(var(--muted-foreground))]"><DatabaseZap size={14} className="text-[hsl(var(--primary))]" /><span className="mono">{dashboard ? `${formatNumber(dashboard.qualifyingListings)} active units` : 'awaiting inventory count'}</span></div></div>
-          {dashboardQuery.isLoading ? <div className="mt-6 grid gap-3 md:grid-cols-1"><Skeleton className="h-48 rounded-xl" /></div> : dashboardQuery.isError && !dashboard ? <div data-testid="error-dashboard" className="panel amber-rule mt-6 rounded-xl p-8 text-center"><ServerCrash size={25} className="mx-auto text-[hsl(var(--accent))]" /><h2 className="display mt-3 text-lg font-bold">Market snapshot unavailable</h2><p className="mx-auto mt-2 max-w-md text-sm text-[hsl(var(--muted-foreground))]">The dashboard endpoint is offline. Nothing is being inferred from missing data.</p><button type="button" data-testid="button-retry-dashboard-empty" onClick={refetchAll} className="mt-5 inline-flex items-center gap-2 rounded-lg bg-[hsl(var(--primary))] px-4 py-2 text-xs font-bold text-[hsl(var(--primary-foreground))]"><RefreshCw size={14} /> Retry connection</button></div> : <><div className="fade-up-delay-2 mt-6 grid gap-3">{CATEGORIES.map((item) => <StatCard key={item} category={item} stat={stats.find((stat) => stat.category === item)} benchmarkMedian={customMedian ?? stats.find((stat) => stat.category === item)?.lowest ?? null} hasCustomMedian={customMedian != null} selected={category === item} onSelect={() => setCategory(item)} onEditMedian={() => setMedianEditorOpen(true)} />)}</div><div className="mt-6 grid gap-4 xl:grid-cols-[minmax(0,1.65fr)_minmax(300px,.8fr)]"><HistoryPanel points={history} loading={historyQuery.isLoading} category={category} range={historyRange} onRangeChange={setHistoryRange} median={benchmarkMedian} onSaveMedian={saveMedian} medianEditorOpen={medianEditorOpen} onCloseMedianEditor={() => setMedianEditorOpen(false)} /><div className="grid gap-4"><PredictionPanel points={history} stat={selectedStat} median={benchmarkMedian} medianIsCustom={customMedian != null} loading={historyQuery.isLoading} /><AlertsPanel alerts={alerts} loading={alertsQuery.isLoading} threshold={alertThreshold} onSaveThreshold={saveAlertThreshold} /></div></div><div className="mt-4 grid gap-4 xl:grid-cols-[1.15fr_1fr]"><ListingsPanel listings={listings} loading={listingsQuery.isLoading} category={listingCategory} sort={listingSort} setSort={setListingSort} /><TransactionsPanel transactions={transactions} loading={transactionsQuery.isLoading} category={transactionCategory} /></div></>}
+           {dashboardQuery.isLoading ? <div className="mt-6 grid gap-3 md:grid-cols-1"><Skeleton className="h-48 rounded-xl" /></div> : dashboardQuery.isError && !dashboard ? <div data-testid="error-dashboard" className="panel amber-rule mt-6 rounded-xl p-8 text-center"><ServerCrash size={25} className="mx-auto text-[hsl(var(--accent))]" /><h2 className="display mt-3 text-lg font-bold">Market snapshot unavailable</h2><p className="mx-auto mt-2 max-w-md text-sm text-[hsl(var(--muted-foreground))]">The dashboard endpoint is offline. Nothing is being inferred from missing data.</p><button type="button" data-testid="button-retry-dashboard-empty" onClick={refetchAll} className="mt-5 inline-flex items-center gap-2 rounded-lg bg-[hsl(var(--primary))] px-4 py-2 text-xs font-bold text-[hsl(var(--primary-foreground))]"><RefreshCw size={14} /> Retry connection</button></div> : <><div className="fade-up-delay-2 mt-6 grid gap-3">{CATEGORIES.map((item) => <StatCard key={item} category={item} stat={stats.find((stat) => stat.category === item)} benchmarkMedian={customMedian ?? stats.find((stat) => stat.category === item)?.lowest ?? null} hasCustomMedian={customMedian != null} selected={category === item} onSelect={() => setCategory(item)} onEditMedian={() => setMedianEditorOpen(true)} />)}</div><div className="mt-6 grid gap-4 xl:grid-cols-[minmax(0,1.65fr)_minmax(300px,.8fr)]"><HistoryPanel points={history} loading={historyQuery.isLoading} category={category} range={historyRange} onRangeChange={setHistoryRange} median={benchmarkMedian} onSaveMedian={saveMedian} medianEditorOpen={medianEditorOpen} onCloseMedianEditor={() => setMedianEditorOpen(false)} /><div className="grid gap-4"><PredictionPanel range={historyRange} loading={historyQuery.isLoading} /><AlertsPanel alerts={alerts} loading={alertsQuery.isLoading} threshold={alertThreshold} onSaveThreshold={saveAlertThreshold} /></div></div><div className="mt-4 grid gap-4 xl:grid-cols-[1.15fr_1fr]"><ListingsPanel listings={listings} loading={listingsQuery.isLoading} category={listingCategory} sort={listingSort} setSort={setListingSort} /><TransactionsPanel transactions={transactions} loading={transactionsQuery.isLoading} category={transactionCategory} /></div></>}
           <footer className="mt-7 flex flex-col gap-2 border-t border-[hsl(var(--border))] pt-4 text-[10px] text-[hsl(var(--muted-foreground))] sm:flex-row sm:items-center sm:justify-between"><span className="inline-flex items-center gap-2"><Check size={13} className="text-[hsl(var(--chart-3))]" /> Live scope locked to DonutSMP Elytra search</span><span className="mono">{dashboard?.generatedAt ? `snapshot generated ${formatTime(dashboard.generatedAt, true)}` : 'snapshot time unavailable'}</span></footer>
       </div>
     </main>

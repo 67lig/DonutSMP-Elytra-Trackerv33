@@ -21,6 +21,7 @@ import type {
 
 import type {
   AnalyzeElytraListingBody,
+  AnalyzeElytraMarketBody,
   ElytraAnalysisResponse,
   ElytraDashboard,
   ElytraListing,
@@ -635,17 +636,17 @@ export const getAnalyzeElytraMarketUrl = () => {
 }
 
 /**
- * Sends DonutSMP auction pages one and two plus the last hour of stored price history to Gemini.
+ * Sends DonutSMP auction pages one and two plus the selected stored price history range to Gemini.
  * @summary Ask Gemini for a market-level buy decision
  */
-export const analyzeElytraMarket = async ( options?: Parameters<typeof customFetch>[1]): Promise<ElytraMarketAnalysisResponse> => {
+export const analyzeElytraMarket = async (analyzeElytraMarketBody?: AnalyzeElytraMarketBody, options?: Parameters<typeof customFetch>[1]): Promise<ElytraMarketAnalysisResponse> => {
 
   return customFetch<ElytraMarketAnalysisResponse>(getAnalyzeElytraMarketUrl(),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(analyzeElytraMarketBody)
   }
 );}
 
@@ -654,8 +655,8 @@ export const analyzeElytraMarket = async ( options?: Parameters<typeof customFet
 
 
 export const getAnalyzeElytraMarketMutationOptions = <TError = ErrorType<void>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof analyzeElytraMarket>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof analyzeElytraMarket>>, TError,void, TContext> => {
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof analyzeElytraMarket>>, TError,{data?: BodyType<AnalyzeElytraMarketBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof analyzeElytraMarket>>, TError,{data?: BodyType<AnalyzeElytraMarketBody>}, TContext> => {
 
 const mutationKey = ['analyzeElytraMarket'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
@@ -667,10 +668,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof analyzeElytraMarket>>, void> = () => {
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof analyzeElytraMarket>>, {data?: BodyType<AnalyzeElytraMarketBody>}> = (props) => {
+          const {data} = props ?? {};
 
-
-          return  analyzeElytraMarket(requestOptions)
+          return  analyzeElytraMarket(data,requestOptions)
         }
 
 
@@ -681,18 +682,18 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
   return  { mutationFn, ...mutationOptions }}
 
     export type AnalyzeElytraMarketMutationResult = NonNullable<Awaited<ReturnType<typeof analyzeElytraMarket>>>
-
+    export type AnalyzeElytraMarketMutationBody = BodyType<AnalyzeElytraMarketBody> | undefined
     export type AnalyzeElytraMarketMutationError = ErrorType<void>
 
     /**
  * @summary Ask Gemini for a market-level buy decision
  */
 export const useAnalyzeElytraMarket = <TError = ErrorType<void>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof analyzeElytraMarket>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof analyzeElytraMarket>>, TError,{data?: BodyType<AnalyzeElytraMarketBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof analyzeElytraMarket>>,
         TError,
-        void,
+        {data?: BodyType<AnalyzeElytraMarketBody>},
         TContext
       > => {
       return useMutation(getAnalyzeElytraMarketMutationOptions(options));

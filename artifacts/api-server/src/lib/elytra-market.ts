@@ -35,6 +35,7 @@ export type MarketAnalysisContext = {
   pageOneListings: NormalizedListing[];
   pageTwoListings: NormalizedListing[];
   hourlyHistory: Awaited<ReturnType<ElytraMarketService["getHistory"]>>;
+  historyRange: HistoryRange;
   marketContext: {
     lowest: number | null;
     median: number | null;
@@ -44,6 +45,16 @@ export type MarketAnalysisContext = {
     recentPrices: number[];
   };
 };
+
+export type HistoryRange =
+  | "five_minutes"
+  | "hour"
+  | "today"
+  | "seven_days"
+  | "thirty_days"
+  | "ninety_days"
+  | "one_year"
+  | "all_time";
 
 type ApiState = {
   connected: boolean;
@@ -638,9 +649,10 @@ export class ElytraMarketService {
     };
   }
 
-  async getHistory(category?: ElytraCategory, range = "thirty_days") {
+  async getHistory(category?: ElytraCategory, range: HistoryRange = "thirty_days") {
     const cutoff = new Date();
     const duration = range === "five_minutes" ? 300_000 :
+      range === "hour" ? 3_600_000 :
       range === "today" ? 86_400_000 :
         range === "seven_days" ? 604_800_000 :
           range === "thirty_days" ? 2_592_000_000 :
@@ -755,11 +767,11 @@ export class ElytraMarketService {
     };
   }
 
-  async getMarketAnalysisContext(): Promise<MarketAnalysisContext> {
-    const [pageOnePayload, pageTwoPayload, hourlyHistory, currentListings] = await Promise.all([
+  async getMarketAnalysisContext(range: HistoryRange = "hour"): Promise<MarketAnalysisContext> {
+    const [pageOnePayload, pageTwoPayload, selectedHistory, currentListings] = await Promise.all([
       this.fetchPage(1, "auction:analysis:page:1"),
       this.fetchPage(2, "auction:analysis:page:2"),
-      this.getHistory(ELYTRA_CATEGORIES[0], "hour"),
+      this.getHistory(ELYTRA_CATEGORIES[0], range),
       db.select().from(elytraListingsTable)
         .where(eq(elytraListingsTable.category, ELYTRA_CATEGORIES[0])),
     ]);
@@ -774,14 +786,15 @@ export class ElytraMarketService {
     return {
       pageOneListings: normalizePage(pageOnePayload),
       pageTwoListings: normalizePage(pageTwoPayload),
-      hourlyHistory,
+      hourlyHistory: selectedHistory,
+      historyRange: range,
       marketContext: {
         lowest: prices[0] ?? null,
         median,
         average,
-        priceChange: hourlyHistory.at(-1)?.priceChange ?? null,
+        priceChange: selectedHistory.at(-1)?.priceChange ?? null,
         activeListings: prices.length,
-        recentPrices: hourlyHistory.map((point) => point.close),
+        recentPrices: selectedHistory.map((point) => point.close),
       },
     };
   }

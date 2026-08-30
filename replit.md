@@ -35,7 +35,7 @@ Live market dashboard for qualifying DonutSMP Elytras, with persistent price obs
 - Massive buy alerts fire when at least 10 units disappear from active listings; massive sell alerts fire when at least 10 units are added. Lowest-price movement is included as context, with no fixed coin threshold.
 - The live feed is currently scoped to every Elytra returned by DonutSMP's `search: elytra` request; enchantment filtering is intentionally deferred.
 - The auction endpoint provides current listings, not a sale ledger, so the activity panel is explicitly labeled as observed market activity rather than fabricated completed sales.
-- Gemini analysis is server-only and capped at five calls per API process lifetime; the listing data and current market context are sent to Gemini, while the key stays in Replit Secrets.
+- Gemini analysis is server-only and capped at five calls per rolling hour; market analysis sends auction pages one and two plus the selected real price-history range, while the key stays in Replit Secrets.
 
 ## Product
 

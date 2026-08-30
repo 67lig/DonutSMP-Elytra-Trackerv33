@@ -133,6 +133,10 @@ export interface AnalyzeElytraListingBody {
   listingId: string;
 }
 
+export interface AnalyzeElytraMarketBody {
+  range?: TimeRange;
+}
+
 export type ElytraAnalysisResponseRecommendation = typeof ElytraAnalysisResponseRecommendation[keyof typeof ElytraAnalysisResponseRecommendation];
 
 
@@ -197,16 +201,9 @@ export type ElytraMarketAnalysisResponseMarketContext = {
   recentPrices: number[];
 };
 
-export type ElytraMarketAnalysisResponseSourceHistoryRange = typeof ElytraMarketAnalysisResponseSourceHistoryRange[keyof typeof ElytraMarketAnalysisResponseSourceHistoryRange];
-
-
-export const ElytraMarketAnalysisResponseSourceHistoryRange = {
-  hour: 'hour',
-} as const;
-
 export type ElytraMarketAnalysisResponseSource = {
   auctionPages: number[];
-  historyRange: ElytraMarketAnalysisResponseSourceHistoryRange;
+  historyRange: TimeRange;
 };
 
 export type ElytraMarketAnalysisResponseUsage = {

@@ -1,11 +1,12 @@
 import type { ElytraListing } from "@workspace/api-zod";
 import type { MarketAnalysisContext } from "./elytra-market";
 
-const GEMINI_MODEL = "gemini-flash-latest";
+const GEMINI_MODEL = "gemini-3.6-flash";
 const GEMINI_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 export const GEMINI_ANALYSIS_LIMIT = 5;
+const GEMINI_ANALYSIS_WINDOW_MS = 60 * 60 * 1_000;
 
-let geminiAnalysisCount = 0;
+let geminiAnalysisTimestamps: number[] = [];
 
 export type ListingAnalysisContext = {
   listing: ElytraListing;
@@ -20,17 +21,32 @@ export type ListingAnalysisContext = {
 };
 
 export function getGeminiUsage() {
+  pruneGeminiAnalysisTimestamps();
   return {
-    used: geminiAnalysisCount,
-    remaining: Math.max(0, GEMINI_ANALYSIS_LIMIT - geminiAnalysisCount),
+    used: geminiAnalysisTimestamps.length,
+    remaining: Math.max(0, GEMINI_ANALYSIS_LIMIT - geminiAnalysisTimestamps.length),
     limit: GEMINI_ANALYSIS_LIMIT,
   };
 }
 
-function reserveGeminiAnalysis(): boolean {
-  if (geminiAnalysisCount >= GEMINI_ANALYSIS_LIMIT) return false;
-  geminiAnalysisCount += 1;
-  return true;
+function pruneGeminiAnalysisTimestamps(now = Date.now()): void {
+  geminiAnalysisTimestamps = geminiAnalysisTimestamps.filter(
+    (timestamp) => now - timestamp < GEMINI_ANALYSIS_WINDOW_MS,
+  );
+}
+
+function reserveGeminiAnalysis(): number | null {
+  pruneGeminiAnalysisTimestamps();
+  if (geminiAnalysisTimestamps.length >= GEMINI_ANALYSIS_LIMIT) return null;
+  const timestamp = Date.now();
+  geminiAnalysisTimestamps.push(timestamp);
+  return timestamp;
+}
+
+function releaseGeminiAnalysis(timestamp: number): void {
+  pruneGeminiAnalysisTimestamps();
+  const index = geminiAnalysisTimestamps.indexOf(timestamp);
+  if (index >= 0) geminiAnalysisTimestamps.splice(index, 1);
 }
 
 function parseModelJson(text: string): {
@@ -73,34 +89,40 @@ function parseModelJson(text: string): {
 async function requestGeminiAnalysis(prompt: string) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error("GEMINI_API_KEY is not configured");
-  if (!reserveGeminiAnalysis()) {
+  const reservation = reserveGeminiAnalysis();
+  if (reservation === null) {
     const error = new Error("Gemini analysis limit reached");
     error.name = "GeminiAnalysisLimitError";
     throw error;
   }
 
-  const response = await fetch(`${GEMINI_ENDPOINT}?key=${encodeURIComponent(apiKey)}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-      generationConfig: {
-        responseMimeType: "application/json",
-        maxOutputTokens: 8192,
-        temperature: 0.2,
-      },
-    }),
-  });
+  try {
+    const response = await fetch(`${GEMINI_ENDPOINT}?key=${encodeURIComponent(apiKey)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        generationConfig: {
+          responseMimeType: "application/json",
+          maxOutputTokens: 8192,
+          temperature: 0.2,
+        },
+      }),
+    });
 
-  if (!response.ok) {
-    throw new Error(`Gemini returned HTTP ${response.status}`);
+    if (!response.ok) {
+      throw new Error(`Gemini returned HTTP ${response.status}`);
+    }
+    const payload = await response.json() as {
+      candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+    };
+    const text = payload.candidates?.[0]?.content?.parts?.map((part) => part.text ?? "").join("").trim();
+    if (!text) throw new Error("Gemini returned no analysis");
+    return text;
+  } catch (error) {
+    releaseGeminiAnalysis(reservation);
+    throw error;
   }
-  const payload = await response.json() as {
-    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-  };
-  const text = payload.candidates?.[0]?.content?.parts?.map((part) => part.text ?? "").join("").trim();
-  if (!text) throw new Error("Gemini returned no analysis");
-  return text;
 }
 
 export async function analyzeElytraListing(context: ListingAnalysisContext) {
@@ -116,7 +138,7 @@ export async function analyzeElytraListing(context: ListingAnalysisContext) {
       listing: context.listing,
       marketContext: context.marketContext,
     }),
-  ].join("\n"));
+  ].join("\n")));
 
   return {
     ...result,
@@ -161,14 +183,9 @@ function parseMarketModelJson(text: string): {
 export async function analyzeElytraMarket(context: MarketAnalysisContext) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error("GEMINI_API_KEY is not configured");
-  if (!reserveGeminiAnalysis()) {
-    const error = new Error("Gemini analysis limit reached");
-    error.name = "GeminiAnalysisLimitError";
-    throw error;
-  }
   const prompt = [
     "You are a cautious Minecraft DonutSMP Elytra market analyst.",
-    "Decide whether a player should buy an Elytra right now using only the supplied live auction pages and stored one-hour price history.",
+    "Decide whether a player should buy an Elytra right now using only the supplied live auction pages and selected stored price history.",
     "Return JSON only with exactly these keys: recommendation, confidence, summary, reasons, risks.",
     'recommendation must be exactly "YES" when the evidence supports buying now, or exactly "NO" when the player should avoid buying or consider selling instead.',
     "confidence is an integer from 0 to 100 and represents confidence in the YES/NO decision, not guaranteed accuracy.",
@@ -176,7 +193,7 @@ export async function analyzeElytraMarket(context: MarketAnalysisContext) {
     JSON.stringify({
       auctionPageOne: context.pageOneListings,
       auctionPageTwo: context.pageTwoListings,
-      pastOneHourGraph: context.hourlyHistory,
+      selectedPriceHistory: context.hourlyHistory,
       marketContext: context.marketContext,
     }),
   ].join("\n");
@@ -184,7 +201,7 @@ export async function analyzeElytraMarket(context: MarketAnalysisContext) {
   return {
     ...marketResult,
     marketContext: context.marketContext,
-    source: { auctionPages: [1, 2], historyRange: "hour" as const },
+    source: { auctionPages: [1, 2], historyRange: context.historyRange },
     usage: getGeminiUsage(),
   };
 }

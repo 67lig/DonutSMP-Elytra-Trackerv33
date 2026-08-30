@@ -7,7 +7,6 @@
  */
 import type { TimeRange } from './timeRange';
 
-export type ElytraMarketAnalysisResponseSource = {
-  auctionPages: number[];
-  historyRange: TimeRange;
-};
+export interface AnalyzeElytraMarketBody {
+  range?: TimeRange;
+}

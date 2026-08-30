@@ -11,6 +11,8 @@ import {
   GetElytraTransactionsResponse,
   AnalyzeElytraListingBody,
   AnalyzeElytraListingResponse,
+  AnalyzeElytraMarketBody,
+  AnalyzeElytraMarketResponse,
 } from "@workspace/api-zod";
 import { elytraMarketService } from "../lib/elytra-market";
 import { analyzeElytraListing, analyzeElytraMarket, GEMINI_ANALYSIS_LIMIT, getGeminiUsage } from "../lib/gemini-analysis";
@@ -94,15 +96,20 @@ router.post("/elytra/analyze", async (req, res): Promise<void> => {
   }
 });
 
-router.post("/elytra/analyze-market", async (_req, res): Promise<void> => {
+router.post("/elytra/analyze-market", async (req, res): Promise<void> => {
+  const parsed = AnalyzeElytraMarketBody.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    invalidQuery(res, parsed.error.message);
+    return;
+  }
   if (getGeminiUsage().used >= GEMINI_ANALYSIS_LIMIT) {
     res.status(429).json({ error: "Gemini analysis limit reached", usage: getGeminiUsage() });
     return;
   }
   try {
-    const context = await elytraMarketService.getMarketAnalysisContext();
+    const context = await elytraMarketService.getMarketAnalysisContext(parsed.data.range);
     const data = await analyzeElytraMarket(context);
-    res.json(data);
+    res.json(AnalyzeElytraMarketResponse.parse(data));
   } catch (error) {
     if (error instanceof Error && error.name === "GeminiAnalysisLimitError") {
       res.status(429).json({ error: error.message, usage: getGeminiUsage() });

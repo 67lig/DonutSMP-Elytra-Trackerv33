@@ -195,9 +195,15 @@ export const AnalyzeElytraListingResponse = zod.object({
 
 
 /**
- * Sends DonutSMP auction pages one and two plus the last hour of stored price history to Gemini.
+ * Sends DonutSMP auction pages one and two plus the selected stored price history range to Gemini.
  * @summary Ask Gemini for a market-level buy decision
  */
+export const analyzeElytraMarketBodyRangeDefault = `hour`;
+
+export const AnalyzeElytraMarketBody = zod.object({
+  "range": zod.enum(['five_minutes', 'hour', 'today', 'seven_days', 'thirty_days', 'ninety_days', 'one_year', 'all_time']).default(analyzeElytraMarketBodyRangeDefault)
+})
+
 export const analyzeElytraMarketResponseConfidenceMin = 0;
 export const analyzeElytraMarketResponseConfidenceMax = 100;
 
@@ -219,7 +225,7 @@ export const AnalyzeElytraMarketResponse = zod.object({
 }),
   "source": zod.object({
   "auctionPages": zod.array(zod.number()),
-  "historyRange": zod.enum(['hour'])
+  "historyRange": zod.enum(['five_minutes', 'hour', 'today', 'seven_days', 'thirty_days', 'ninety_days', 'one_year', 'all_time'])
 }),
   "usage": zod.object({
   "used": zod.number(),

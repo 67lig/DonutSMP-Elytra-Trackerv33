@@ -25,4 +25,3 @@ export type {
   PriceObservation,
   TimeRangeParameter,
 } from "./generated/types";
-export * from './generated/types';

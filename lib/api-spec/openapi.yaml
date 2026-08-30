@@ -153,7 +153,13 @@ paths:
       operationId: analyzeElytraMarket
       tags: [elytra]
       summary: Ask Gemini for a market-level buy decision
-      description: Sends DonutSMP auction pages one and two plus the last hour of stored price history to Gemini.
+      description: Sends DonutSMP auction pages one and two plus the selected stored price history range to Gemini.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnalyzeElytraMarketBody"
       responses:
         "200":
           description: Gemini market recommendation
@@ -359,6 +365,12 @@ components:
           type: string
           minLength: 1
       required: [listingId]
+    AnalyzeElytraMarketBody:
+      type: object
+      properties:
+        range:
+          $ref: "#/components/schemas/TimeRange"
+          default: hour
     ElytraAnalysisResponse:
       type: object
       properties:
@@ -457,7 +469,7 @@ components:
                 type: number
             historyRange:
               type: string
-              enum: [hour]
+              $ref: "#/components/schemas/TimeRange"
           required: [auctionPages, historyRange]
         usage:
           type: object

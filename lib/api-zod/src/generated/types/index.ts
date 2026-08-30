@@ -7,6 +7,7 @@
  */
 
 export * from './analyzeElytraListingBody';
+export * from './analyzeElytraMarketBody';
 export * from './apiStatus';
 export * from './categoryParameter';
 export * from './elytraAnalysisResponse';
@@ -20,7 +21,6 @@ export * from './elytraMarketAnalysisResponse';
 export * from './elytraMarketAnalysisResponseMarketContext';
 export * from './elytraMarketAnalysisResponseRecommendation';
 export * from './elytraMarketAnalysisResponseSource';
-export * from './elytraMarketAnalysisResponseSourceHistoryRange';
 export * from './elytraMarketAnalysisResponseUsage';
 export * from './elytraStats';
 export * from './elytraTransaction';
