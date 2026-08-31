@@ -32,15 +32,15 @@ Live market dashboard for qualifying DonutSMP Elytras, with persistent price obs
 ## Architecture decisions
 
 - DonutSMP polling is centralized in the API server, so browser visitors share one cached snapshot and cannot multiply upstream traffic.
-- The API server makes one lowest-price page request every five seconds, then records the lowest returned price as a real market snapshot. Browser visitors share this cached feed and cannot multiply upstream traffic.
+- The API server scans both configured markets through the centralized cached feed every 15 seconds, then records the lowest returned price as a real market snapshot. The interval stays below DonutSMP's request cap while browser visitors cannot multiply upstream traffic.
 - Massive buy alerts fire when at least 10 units disappear from active listings; massive sell alerts fire when at least 10 units are added. Lowest-price movement is included as context, with no fixed coin threshold.
-- The live feed is currently scoped to every Elytra returned by DonutSMP's `search: elytra` request; enchantment filtering is intentionally deferred.
+- The live feed is currently scoped to every Elytra and Netherite Block returned by DonutSMP's `search: elytra` and `search: netherite_block` requests; enchantment filtering is intentionally deferred.
 - The auction endpoint provides current listings, not a sale ledger, so the activity panel is explicitly labeled as observed market activity rather than fabricated completed sales.
 - Gemini analysis is server-only through Google’s native `generateContent` endpoint using `gemini-flash-latest`, capped at five calls per rolling hour; market analysis sends auction pages one and two plus the selected real price-history range, while the key stays in Replit Secrets.
 
 ## Product
 
-Users can view current Elytra statistics, filter an observed lowest-price history by range, sort/search listings, inspect recent observed activity, and review alerts generated from real changes in listing supply and price.
+Users can view current Elytra or Netherite Block statistics, switch the active market tab, filter observed lowest-price history by range, sort/search listings, inspect recent observed activity, and review alerts generated from real changes in listing supply and price.
 
 ## User preferences
 

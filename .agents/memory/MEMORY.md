@@ -3,3 +3,4 @@
 - [Market chart data](market-chart-data.md) — chart OHLC must aggregate stored lowest-price observations, not raw listing transactions.
 - [OpenRouter AI access](openrouter-ai-provider.md) — provider requests can be correctly configured yet return 402 when the account has no credits.
 - [Imported artifact registration](imported-artifact-registration.md) — imported artifact metadata may exist without catalog registration, so preview tooling can fail while workflows still run.
+- [DonutSMP request headroom](donutsmp-rate-limits.md) — full scans across both markets need a conservative interval to stay below the provider’s per-key request cap.

@@ -286,7 +286,7 @@ function MarketInventoryPanel({ stat, category, loading }: { stat?: MarketStat; 
         <div>
           <p className="mono text-[10px] uppercase tracking-[.2em] text-[hsl(var(--primary))]">live supply</p>
           <h2 className="display mt-1 text-lg font-bold tracking-tight">Current {categoryPlural[category]} on the market</h2>
-          <p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">Full Auction House scan · refreshed every 10 seconds</p>
+          <p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">Full Auction House scan · refreshed every 15 seconds</p>
         </div>
         <div className="inline-flex items-center gap-2 self-start rounded-lg bg-[hsl(var(--primary)/.12)] px-3 py-2 text-xs text-[hsl(var(--primary))]">
           <DatabaseZap size={15} />

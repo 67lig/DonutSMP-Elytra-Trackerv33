@@ -79,7 +79,7 @@ type ApiState = {
 };
 
 const MAX_AUCTION_PAGES = 20;
-const POLL_INTERVAL_MS = 10_000;
+const POLL_INTERVAL_MS = 15_000;
 const ROLLING_REQUEST_LIMIT = 220;
 const REQUEST_WINDOW_MS = 60_000;
 
@@ -291,7 +291,7 @@ function normalizeListing(record: RawRecord, collectedAt: Date, category: Elytra
     id,
     itemId,
     displayName,
-    category: "elytra",
+    category,
     enchantments,
     price,
     seller,
