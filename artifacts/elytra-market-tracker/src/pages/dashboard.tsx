@@ -81,7 +81,7 @@ function playAlertSound() {
   const context = alertAudioContext;
   const play = () => {
     const now = context.currentTime;
-    const chimes = [660, 760, 900];
+    const chimes = [740, 740, 740];
     chimes.forEach((frequency, index) => {
       const start = now + index * 0.2;
       const oscillator = context.createOscillator();
