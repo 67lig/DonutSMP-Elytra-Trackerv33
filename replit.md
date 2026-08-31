@@ -4,7 +4,8 @@ Live market dashboard for qualifying DonutSMP Elytras, with persistent price obs
 
 ## Run & Operate
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 8080)
+- `PORT=8080 NODE_ENV=development pnpm --filter @workspace/api-server run dev` — run the API server (port 8080)
+- `PORT=23509 BASE_PATH=/ NODE_ENV=development pnpm --filter @workspace/elytra-market-tracker run dev` — run the web dashboard (port 23509)
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec

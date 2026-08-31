@@ -103,7 +103,16 @@ function requestAuctionPage(page: number, apiKey: string): Promise<unknown> {
       response.on("end", () => {
         const status = response.statusCode ?? 0;
         if (status < 200 || status >= 300) {
-          reject(new Error(`DonutSMP returned HTTP ${status}`));
+          let providerMessage = "";
+          try {
+            const errorPayload = JSON.parse(Buffer.concat(chunks).toString("utf8")) as RawRecord;
+            providerMessage = asString(nestedValue(errorPayload, ["message", "reason", "error"])) ?? "";
+          } catch {
+            // Keep the status-based error when DonutSMP does not return JSON.
+          }
+          reject(new Error(
+            `DonutSMP returned HTTP ${status}${providerMessage ? `: ${providerMessage}` : ""}`,
+          ));
           return;
         }
         try {
@@ -249,7 +258,11 @@ function normalizeListing(record: RawRecord, collectedAt: Date): NormalizedListi
     asString(nestedValue(sellerRecord ?? {}, ["name", "username"])) ?? "Unknown seller";
   const sellerUuid = asString(nestedValue(record, ["seller_uuid", "sellerUuid", "owner_uuid"])) ??
     asString(nestedValue(sellerRecord ?? {}, ["uuid", "id"]));
-  const quantity = Math.max(1, Math.floor(asNumber(nestedValue(record, ["quantity", "count", "amount"])) ?? 1));
+  const quantity = Math.max(1, Math.floor(
+    asNumber(nestedValue(item, ["count", "quantity"])) ??
+      asNumber(nestedValue(record, ["quantity", "count"])) ??
+      1,
+  ));
   const itemId = asString(nestedValue(record, ["item_id", "itemId", "auction_id", "auctionId"]) ??
     nestedValue(item, ["id", "item_id", "itemId"]));
   const rawId = asString(nestedValue(record, ["id", "auction_id", "auctionId", "uuid"])) ??
@@ -396,7 +409,9 @@ export class ElytraMarketService {
     }
     const lastSuccessfulPage = Math.max(...payloads.keys(), 0);
     const hasNonTailFailure = [...failedPages.entries()].some(([page, message]) => {
-      const isOutOfRange = message.includes("HTTP 400") || message.includes("HTTP 404");
+      const isOutOfRange = message.includes("HTTP 400") ||
+        message.includes("HTTP 404") ||
+        /page .* does not exist/i.test(message);
       return page <= lastSuccessfulPage || !isOutOfRange;
     });
     return {
