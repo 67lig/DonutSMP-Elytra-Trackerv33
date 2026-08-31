@@ -64,7 +64,7 @@ router.get("/elytra/alerts", async (req, res): Promise<void> => {
     invalidQuery(res, parsed.error.message);
     return;
   }
-  const data = await elytraMarketService.getAlerts(parsed.data.limit, parsed.data.threshold);
+  const data = await elytraMarketService.getAlerts(parsed.data.category, parsed.data.limit, parsed.data.threshold);
   res.json(GetElytraAlertsResponse.parse(data));
 });
 
@@ -115,7 +115,7 @@ router.post("/elytra/analyze-market", async (req, res): Promise<void> => {
     return;
   }
   try {
-    const context = await elytraMarketService.getMarketAnalysisContext(parsed.data.range);
+    const context = await elytraMarketService.getMarketAnalysisContext(parsed.data.category, parsed.data.range);
     const data = await analyzeElytraMarket(context);
     res.json(AnalyzeElytraMarketResponse.parse(data));
   } catch (error) {

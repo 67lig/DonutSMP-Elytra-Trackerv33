@@ -20,7 +20,7 @@ import {
   useAnalyzeElytraMarket,
 } from '@workspace/api-client-react';
 
-const CATEGORIES = ['elytra'] as const;
+const CATEGORIES = ['elytra', 'netherite_block'] as const;
 type Category = typeof CATEGORIES[number];
 const HISTORY_RANGES = [
   { value: 'five_minutes', label: 'Last 5 minutes' },
@@ -136,9 +136,15 @@ function parsePriceInput(input: string) {
 
 const categoryName: Record<Category, string> = {
   elytra: 'Elytra',
+  netherite_block: 'Netherite Block',
 };
 const categoryShort: Record<Category, string> = {
   elytra: 'Elytra',
+  netherite_block: 'Netherite',
+};
+const categoryPlural: Record<Category, string> = {
+  elytra: 'Elytras',
+  netherite_block: 'Netherite Blocks',
 };
 
 function isCategory(value: string | undefined): value is Category {
@@ -270,21 +276,16 @@ function StatCard({ category, stat, selected, onSelect, benchmarkMedian, hasCust
   );
 }
 
-type DashboardSnapshot = {
-  qualifyingListings?: number;
-  qualifyingUnits?: number;
-};
-
-function MarketInventoryPanel({ dashboard, loading }: { dashboard?: DashboardSnapshot; loading: boolean }) {
-  const listings = dashboard?.qualifyingListings;
-  const units = dashboard?.qualifyingUnits;
+function MarketInventoryPanel({ stat, category, loading }: { stat?: MarketStat; category: Category; loading: boolean }) {
+  const listings = stat?.activeListings;
+  const units = stat?.activeUnits;
   const averageUnits = units != null && listings ? units / listings : null;
   return (
     <section data-testid="panel-market-inventory" className="panel cyan-rule mt-6 overflow-hidden rounded-xl p-4 sm:p-5">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <p className="mono text-[10px] uppercase tracking-[.2em] text-[hsl(var(--primary))]">live supply</p>
-          <h2 className="display mt-1 text-lg font-bold tracking-tight">Current Elytras on the market</h2>
+          <h2 className="display mt-1 text-lg font-bold tracking-tight">Current {categoryPlural[category]} on the market</h2>
           <p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">Full Auction House scan · refreshed every 10 seconds</p>
         </div>
         <div className="inline-flex items-center gap-2 self-start rounded-lg bg-[hsl(var(--primary)/.12)] px-3 py-2 text-xs text-[hsl(var(--primary))]">
@@ -294,18 +295,18 @@ function MarketInventoryPanel({ dashboard, loading }: { dashboard?: DashboardSna
       </div>
       <div className="mt-5 grid gap-3 sm:grid-cols-3">
         <div className="rounded-lg border border-[hsl(var(--primary)/.28)] bg-[hsl(var(--primary)/.08)] p-4 sm:col-span-1">
-          <p className="mono text-[10px] uppercase tracking-wider text-[hsl(var(--muted-foreground))]">Elytras on AH</p>
-          {loading ? <Skeleton className="mt-2 h-10 w-28" /> : <p data-testid="text-active-elytra-units" className="display mt-1 text-4xl font-bold tracking-[-.05em] text-[hsl(var(--primary))]">{formatNumber(units)}</p>}
-          <p className="mt-2 text-[11px] text-[hsl(var(--muted-foreground))]">individual Elytra items currently listed</p>
+          <p className="mono text-[10px] uppercase tracking-wider text-[hsl(var(--muted-foreground))]">{categoryPlural[category]} on AH</p>
+          {loading ? <Skeleton className="mt-2 h-10 w-28" /> : <p data-testid={`text-active-${category}-units`} className="display mt-1 text-4xl font-bold tracking-[-.05em] text-[hsl(var(--primary))]">{formatNumber(units)}</p>}
+          <p className="mt-2 text-[11px] text-[hsl(var(--muted-foreground))]">individual {categoryPlural[category].toLowerCase()} currently listed</p>
         </div>
         <div className="rounded-lg border border-[hsl(var(--card-border))] bg-[hsl(var(--secondary)/.35)] p-4">
           <p className="mono text-[10px] uppercase tracking-wider text-[hsl(var(--muted-foreground))]">active listings</p>
-          {loading ? <Skeleton className="mt-2 h-8 w-20" /> : <p data-testid="text-active-elytra-listings" className="display mt-1 text-3xl font-bold">{formatNumber(listings)}</p>}
+          {loading ? <Skeleton className="mt-2 h-8 w-20" /> : <p data-testid={`text-active-${category}-listings`} className="display mt-1 text-3xl font-bold">{formatNumber(listings)}</p>}
           <p className="mt-2 text-[11px] text-[hsl(var(--muted-foreground))]">auction rows across all scanned pages</p>
         </div>
         <div className="rounded-lg border border-[hsl(var(--card-border))] bg-[hsl(var(--secondary)/.35)] p-4">
           <p className="mono text-[10px] uppercase tracking-wider text-[hsl(var(--muted-foreground))]">average per listing</p>
-          {loading ? <Skeleton className="mt-2 h-8 w-20" /> : <p data-testid="text-average-elytras-per-listing" className="display mt-1 text-3xl font-bold">{formatNumber(averageUnits, 1)}</p>}
+          {loading ? <Skeleton className="mt-2 h-8 w-20" /> : <p data-testid={`text-average-${category}-per-listing`} className="display mt-1 text-3xl font-bold">{formatNumber(averageUnits, 1)}</p>}
           <p className="mt-2 text-[11px] text-[hsl(var(--muted-foreground))]">quantity-weighted supply signal for Gemini</p>
         </div>
       </div>
@@ -469,7 +470,7 @@ function HistoryPanel({ points, loading, category, range, onRangeChange, median,
       <div className="flex flex-col gap-4 border-b border-[hsl(var(--card-border))] p-4 sm:flex-row sm:items-start sm:justify-between sm:p-5">
         <div>
           <p className="mono text-[10px] uppercase tracking-[.2em] text-[hsl(var(--accent))]">auction house price</p>
-          <h2 className="display mt-1 text-lg font-bold tracking-tight">Observed Elytra price</h2>
+          <h2 className="display mt-1 text-lg font-bold tracking-tight">Observed {categoryName[category]} price</h2>
            <p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">Showing stepped item value trends · pinch to zoom</p>
         </div>
         <div className="flex max-w-full gap-1 overflow-x-auto rounded-lg border border-[hsl(var(--card-border))] bg-[hsl(var(--secondary)/.5)] p-1" role="tablist" aria-label="Price history range">
@@ -494,7 +495,7 @@ function HistoryPanel({ points, loading, category, range, onRangeChange, median,
             <p className="mt-1 mono text-[9px] text-[hsl(var(--muted-foreground))]">{formatChartValue(hoveredPoint.observationCount)} observations · low {formatChartValue(hoveredPoint.low)}</p>
           </div>}
            {chartIsZoomed && <button type="button" data-testid="button-reset-chart-zoom" onPointerDown={(event) => event.stopPropagation()} onClick={() => setChartTransform(DEFAULT_CHART_TRANSFORM)} className="absolute right-3 top-3 z-20 inline-flex items-center gap-1 rounded-md border border-[hsl(var(--card-border))] bg-[#1c232d]/90 px-2 py-1.5 text-[10px] font-semibold text-[hsl(var(--foreground))] shadow-lg backdrop-blur-sm hover:border-[hsl(var(--primary)/.65)]" aria-label="Reset chart zoom"><RefreshCw size={11} /> Reset</button>}
-           <svg ref={chartRef} viewBox="0 0 1000 340" className="block h-full w-full touch-none select-none text-[hsl(var(--muted-foreground))]" role="img" aria-label={`Stepped Elytra price chart for ${HISTORY_RANGES.find((option) => option.value === range)?.label}`} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerEnd} onPointerCancel={handlePointerEnd} onWheel={handleWheel}>
+            <svg ref={chartRef} viewBox="0 0 1000 340" className="block h-full w-full touch-none select-none text-[hsl(var(--muted-foreground))]" role="img" aria-label={`Stepped ${categoryName[category]} price chart for ${HISTORY_RANGES.find((option) => option.value === range)?.label}`} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerEnd} onPointerCancel={handlePointerEnd} onWheel={handleWheel}>
             <defs>
               <linearGradient id="history-area-fill" x1="0" x2="0" y1="0" y2="1">
                 <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity=".18" />
@@ -542,7 +543,7 @@ type MarketAnalysis = {
   usage: { used: number; remaining: number; limit: number };
 };
 
-function PredictionPanel({ range, loading }: { range: Range; loading: boolean }) {
+function PredictionPanel({ range, category, loading }: { range: Range; category: Category; loading: boolean }) {
   const marketAnalysis = useAnalyzeElytraMarket();
   const analysis = marketAnalysis.data as MarketAnalysis | undefined;
   const error = marketAnalysis.error as { message?: string; data?: { error?: string } } | null;
@@ -552,11 +553,11 @@ function PredictionPanel({ range, loading }: { range: Range; loading: boolean })
 
   useEffect(() => {
     marketAnalysis.reset();
-  }, [range]);
+  }, [category, range]);
 
   const askAi = () => {
     marketAnalysis.reset();
-    marketAnalysis.mutate({ data: { range } });
+    marketAnalysis.mutate({ data: { category, range } });
   };
 
   return (
@@ -565,7 +566,7 @@ function PredictionPanel({ range, loading }: { range: Range; loading: boolean })
         <div>
           <p className="mono text-[10px] uppercase tracking-[.2em] text-[hsl(var(--accent))]">AI prediction</p>
           <h2 className="display mt-1 text-lg font-bold tracking-tight">Should you buy or sell?</h2>
-           <p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">Gemini reads the live supply count, auction pages 1 + 2, and the selected price graph</p>
+           <p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">Gemini reads the live {categoryPlural[category].toLowerCase()} supply, auction pages 1 + 2, and the selected price graph</p>
         </div>
         <span className="rounded-lg bg-[hsl(var(--primary)/.14)] p-2 text-[hsl(var(--primary))]"><Sparkles size={17} /></span>
       </div>
@@ -590,7 +591,7 @@ function PredictionPanel({ range, loading }: { range: Range; loading: boolean })
             <div className="mt-4 grid grid-cols-2 gap-2 border-t border-[hsl(var(--card-border))] pt-4 text-xs">
                <div><span className="text-[hsl(var(--muted-foreground))]">market low </span><span className="mono">{formatPrice(analysis.marketContext.lowest)}</span></div>
               <div className="text-right"><span className="text-[hsl(var(--muted-foreground))]">range </span><span className="mono">{rangeLabel}</span></div>
-               <div><span className="text-[hsl(var(--muted-foreground))]">Elytras on AH </span><span className="mono">{formatNumber(analysis.marketContext.activeUnits)}</span></div>
+               <div><span className="text-[hsl(var(--muted-foreground))]">{categoryPlural[category]} on AH </span><span className="mono">{formatNumber(analysis.marketContext.activeUnits)}</span></div>
               {analysis.marketContext.priceChange != null && <div><span className="text-[hsl(var(--muted-foreground))]">graph move </span><span className={analysis.marketContext.priceChange >= 0 ? 'text-[hsl(var(--destructive))]' : 'text-[hsl(var(--chart-3))]'}>{analysis.marketContext.priceChange >= 0 ? '+' : ''}{analysis.marketContext.priceChange.toFixed(1)}%</span></div>}
               <div className="text-right"><span className="text-[hsl(var(--muted-foreground))]">AI uses left </span><span className="mono">{analysis.usage.remaining}/{analysis.usage.limit}</span></div>
             </div>
@@ -598,7 +599,7 @@ function PredictionPanel({ range, loading }: { range: Range; loading: boolean })
               <p><span className="text-[hsl(var(--chart-3))]">Why: </span>{analysis.reasons[0] ?? 'The model found mixed evidence.'}</p>
               <p><span className="text-[hsl(var(--accent))]">Risk: </span>{analysis.risks[0] ?? 'Market conditions can change quickly.'}</p>
             </div>
-          </div> : <div className="mt-6 rounded-lg border border-dashed border-[hsl(var(--card-border))] p-4 text-center"><Target size={20} className="mx-auto text-[hsl(var(--primary))]" /><p className="mt-2 text-sm font-semibold">Ask the AI for the market call</p><p className="mt-1 text-xs leading-5 text-[hsl(var(--muted-foreground))]">It will compare live auction pages 1 and 2 with the {HISTORY_RANGES.find((option) => option.value === range)?.label.toLowerCase()} graph and return only YES or NO.</p></div>}
+          </div> : <div className="mt-6 rounded-lg border border-dashed border-[hsl(var(--card-border))] p-4 text-center"><Target size={20} className="mx-auto text-[hsl(var(--primary))]" /><p className="mt-2 text-sm font-semibold">Ask the AI for the market call</p><p className="mt-1 text-xs leading-5 text-[hsl(var(--muted-foreground))]">It will compare live {categoryPlural[category].toLowerCase()} listings on auction pages 1 and 2 with the {HISTORY_RANGES.find((option) => option.value === range)?.label.toLowerCase()} graph and return only YES or NO.</p></div>}
           {error && <div data-testid="error-ai-prediction" className="mt-4 rounded-lg border border-[hsl(var(--destructive)/.3)] bg-[hsl(var(--destructive)/.08)] p-3 text-xs"><p className="font-bold">AI prediction unavailable</p><p className="mt-1 text-[hsl(var(--muted-foreground))]">{error.data?.error ?? error.message ?? 'Gemini could not complete the market analysis.'}</p></div>}
           <button type="button" data-testid="button-ask-ai" onClick={askAi} disabled={marketAnalysis.isPending || remaining === 0} className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[hsl(var(--primary))] px-4 py-2.5 text-xs font-bold text-[hsl(var(--primary-foreground))] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-45"><Sparkles size={14} />{remaining === 0 ? 'Hourly AI limit reached' : analysis ? 'Ask AI again' : 'Ask AI: buy or sell?'}</button>
           <p className="mt-3 flex items-start gap-2 text-[10px] leading-4 text-[hsl(var(--muted-foreground))]"><Info size={13} className="mt-0.5 shrink-0 text-[hsl(var(--primary))]" /> AI output is a market signal, not a guarantee. Five analyses are available per rolling hour.</p>
@@ -684,14 +685,14 @@ function ListingsPanel({ listings, loading, category, sort, setSort }: { listing
   };
   return (
     <section className="panel min-w-0 rounded-xl p-4 sm:p-5">
-      <SectionHeading eyebrow="live inventory" title="Current listings" detail="Elytras returned by the DonutSMP Auction House search" action={<div className="flex items-center gap-2"><span className="mono rounded-md bg-[hsl(var(--secondary))] px-2 py-1 text-[10px] text-[hsl(var(--primary))]">{filtered.length} shown</span><span className="mono rounded-md bg-[hsl(var(--secondary))] px-2 py-1 text-[10px] text-[hsl(var(--muted-foreground))]">Gemini {analysisUses}/{GEMINI_ANALYSIS_LIMIT}</span></div>} />
+       <SectionHeading eyebrow="live inventory" title="Current listings" detail={`${categoryPlural[category]} returned by the DonutSMP Auction House search`} action={<div className="flex items-center gap-2"><span className="mono rounded-md bg-[hsl(var(--secondary))] px-2 py-1 text-[10px] text-[hsl(var(--primary))]">{filtered.length} shown</span><span className="mono rounded-md bg-[hsl(var(--secondary))] px-2 py-1 text-[10px] text-[hsl(var(--muted-foreground))]">Gemini {analysisUses}/{GEMINI_ANALYSIS_LIMIT}</span></div>} />
       <div className="mb-3 flex flex-col gap-2 sm:flex-row">
         <label className="relative flex-1"><Search size={14} className="absolute left-3 top-2.5 text-[hsl(var(--muted-foreground))]" /><input data-testid="input-listing-search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search seller or item ID" className="w-full rounded-lg border border-[hsl(var(--card-border))] bg-[hsl(var(--secondary))] py-2 pl-9 pr-3 text-xs outline-none placeholder:text-[hsl(var(--muted-foreground))] focus:border-[hsl(var(--primary))]" /></label>
         <SelectControl value={sort} onChange={(value) => setSort(value as ListingSort)} label="Listing sort" testId="select-listing-sort"><option value="recent">Recent</option><option value="lowest">Lowest</option><option value="highest">Highest</option></SelectControl>
       </div>
        <div className="scrollbar-thin max-h-[345px] overflow-auto">
-          {loading ? <div className="space-y-2"><Skeleton className="h-14 w-full" /><Skeleton className="h-14 w-full" /><Skeleton className="h-14 w-full" /></div> : filtered.length === 0 ? <div data-testid="empty-listings" className="rounded-lg border border-dashed border-[hsl(var(--card-border))] px-4 py-9 text-center"><ListFilter size={20} className="mx-auto text-[hsl(var(--muted-foreground))]" /><p className="mt-2 text-sm font-semibold">{search ? 'No matching listings' : 'No active listings'}</p><p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">The endpoint returned no direct Elytra listings for this filter.</p></div> : <div className="space-y-1.5">{filtered.map((listing) => <div data-testid={`row-listing-${listing.id}`} key={listing.id} className="group grid grid-cols-[1fr_auto] gap-3 rounded-lg border border-transparent px-3 py-2.5 transition-colors hover:border-[hsl(var(--card-border))] hover:bg-[hsl(var(--secondary)/.55)] sm:grid-cols-[1.25fr_.8fr_auto]">
-           <div className="min-w-0"><div className="flex items-center gap-2"><p className="truncate text-xs font-bold">{listing.displayName || 'Elytra'}</p><span className="hidden rounded bg-[hsl(var(--primary)/.1)] px-1.5 py-0.5 mono text-[9px] text-[hsl(var(--primary))] sm:inline">{categoryShort[safeCategory(listing.category) || 'elytra']}</span></div><p className="mt-1 truncate text-[10px] text-[hsl(var(--muted-foreground))]">{listing.seller} · {listing.quantity} unit{listing.quantity === 1 ? '' : 's'}{listing.timeRemaining ? ` · ${listing.timeRemaining}` : ''}</p></div>
+           {loading ? <div className="space-y-2"><Skeleton className="h-14 w-full" /><Skeleton className="h-14 w-full" /><Skeleton className="h-14 w-full" /></div> : filtered.length === 0 ? <div data-testid="empty-listings" className="rounded-lg border border-dashed border-[hsl(var(--card-border))] px-4 py-9 text-center"><ListFilter size={20} className="mx-auto text-[hsl(var(--muted-foreground))]" /><p className="mt-2 text-sm font-semibold">{search ? 'No matching listings' : 'No active listings'}</p><p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">The endpoint returned no direct {categoryPlural[category].toLowerCase()} listings for this filter.</p></div> : <div className="space-y-1.5">{filtered.map((listing) => <div data-testid={`row-listing-${listing.id}`} key={listing.id} className="group grid grid-cols-[1fr_auto] gap-3 rounded-lg border border-transparent px-3 py-2.5 transition-colors hover:border-[hsl(var(--card-border))] hover:bg-[hsl(var(--secondary)/.55)] sm:grid-cols-[1.25fr_.8fr_auto]">
+            <div className="min-w-0"><div className="flex items-center gap-2"><p className="truncate text-xs font-bold">{listing.displayName || categoryName[category]}</p><span className="hidden rounded bg-[hsl(var(--primary)/.1)] px-1.5 py-0.5 mono text-[9px] text-[hsl(var(--primary))] sm:inline">{categoryShort[safeCategory(listing.category) || category]}</span></div><p className="mt-1 truncate text-[10px] text-[hsl(var(--muted-foreground))]">{listing.seller} · {listing.quantity} unit{listing.quantity === 1 ? '' : 's'}{listing.timeRemaining ? ` · ${listing.timeRemaining}` : ''}</p></div>
           <p className="mono self-center text-right text-sm font-bold">{formatPrice(listing.price)}</p>
             <div className="col-start-1 flex items-center gap-1 sm:col-auto sm:self-center sm:justify-end"><p className="mr-auto text-[10px] text-[hsl(var(--muted-foreground))] sm:mr-2">{formatTime(listing.collectedAt)}</p><button type="button" data-testid={`button-favorite-${listing.id}`} onClick={() => toggleFavorite(listing.id)} aria-label={favorites.has(listing.id) ? `Unfavorite ${listing.displayName}` : `Favorite ${listing.displayName}`} className={`rounded-md p-1.5 transition-colors ${favorites.has(listing.id) ? 'text-[hsl(var(--accent))]' : 'text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--accent))]'}`}><Star size={15} fill={favorites.has(listing.id) ? 'currentColor' : 'none'} /></button><button type="button" data-testid={`button-ask-gemini-${listing.id}`} disabled={analysisLoading || analysisUses >= GEMINI_ANALYSIS_LIMIT} onClick={() => void askGemini(listing)} aria-label={`Ask Gemini about ${listing.displayName}`} title={analysisUses >= GEMINI_ANALYSIS_LIMIT ? 'Gemini analysis limit reached' : 'Ask Gemini'} className="rounded-md bg-[hsl(var(--primary)/.12)] p-1.5 text-[hsl(var(--primary))] transition-colors hover:bg-[hsl(var(--primary)/.22)] disabled:cursor-not-allowed disabled:opacity-40"><Sparkles size={15} /></button></div>
         </div>)}</div>}
@@ -705,21 +706,21 @@ function TransactionsPanel({ transactions, loading, category }: { transactions: 
   const filtered = transactions.filter((item) => safeCategory(item.category) === category);
   return (
     <section className="panel min-w-0 rounded-xl p-4 sm:p-5">
-      <SectionHeading eyebrow="recent prints" title="Recent market activity" detail="New Elytras observed by the tracker" action={<span className="mono rounded-md bg-[hsl(var(--secondary))] px-2 py-1 text-[10px] text-[hsl(var(--primary))]">Elytra</span>} />
+      <SectionHeading eyebrow="recent prints" title="Recent market activity" detail={`New ${categoryPlural[category].toLowerCase()} observed by the tracker`} action={<span className="mono rounded-md bg-[hsl(var(--secondary))] px-2 py-1 text-[10px] text-[hsl(var(--primary))]">{categoryShort[category]}</span>} />
        <div className="scrollbar-thin max-h-[340px] overflow-auto">
-         {loading ? <div className="space-y-2"><Skeleton className="h-12 w-full" /><Skeleton className="h-12 w-full" /><Skeleton className="h-12 w-full" /></div> : filtered.length === 0 ? <div data-testid="empty-transactions" className="rounded-lg border border-dashed border-[hsl(var(--card-border))] px-4 py-9 text-center"><Clock3 size={20} className="mx-auto text-[hsl(var(--muted-foreground))]" /><p className="mt-2 text-sm font-semibold">No recent activity</p><p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">No new Elytra listings have been observed yet.</p></div> : <div className="space-y-1.5">{filtered.map((item) => <div data-testid={`row-transaction-${item.id}`} key={item.id} className="grid grid-cols-[1fr_auto] gap-3 rounded-lg border border-transparent px-3 py-2.5 transition-colors hover:border-[hsl(var(--card-border)/.55)] hover:bg-[hsl(var(--secondary)/.55)]"><div><p className="text-xs font-bold">{item.seller}</p><p className="mt-1 text-[10px] text-[hsl(var(--muted-foreground))]">{categoryShort[safeCategory(item.category) || 'elytra']} · {item.quantity} unit{item.quantity === 1 ? '' : 's'} · {formatTime(item.timestamp)}</p></div><p className="mono self-center text-sm font-bold">{formatPrice(item.price)}</p></div>)}</div>}
+          {loading ? <div className="space-y-2"><Skeleton className="h-12 w-full" /><Skeleton className="h-12 w-full" /><Skeleton className="h-12 w-full" /></div> : filtered.length === 0 ? <div data-testid="empty-transactions" className="rounded-lg border border-dashed border-[hsl(var(--card-border))] px-4 py-9 text-center"><Clock3 size={20} className="mx-auto text-[hsl(var(--muted-foreground))]" /><p className="mt-2 text-sm font-semibold">No recent activity</p><p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">No new {categoryPlural[category].toLowerCase()} listings have been observed yet.</p></div> : <div className="space-y-1.5">{filtered.map((item) => <div data-testid={`row-transaction-${item.id}`} key={item.id} className="grid grid-cols-[1fr_auto] gap-3 rounded-lg border border-transparent px-3 py-2.5 transition-colors hover:border-[hsl(var(--card-border)/.55)] hover:bg-[hsl(var(--secondary)/.55)]"><div><p className="text-xs font-bold">{item.seller}</p><p className="mt-1 text-[10px] text-[hsl(var(--muted-foreground))]">{categoryShort[safeCategory(item.category) || category]} · {item.quantity} unit{item.quantity === 1 ? '' : 's'} · {formatTime(item.timestamp)}</p></div><p className="mono self-center text-sm font-bold">{formatPrice(item.price)}</p></div>)}</div>}
       </div>
     </section>
   );
 }
 
-function AlertsPanel({ alerts, loading, threshold, soundEnabled, onSaveThreshold, onSoundEnabledChange }: { alerts: any[]; loading: boolean; threshold: number; soundEnabled: boolean; onSaveThreshold: (value: number) => void; onSoundEnabledChange: (enabled: boolean) => void }) {
+function AlertsPanel({ alerts, category, loading, threshold, soundEnabled, onSaveThreshold, onSoundEnabledChange }: { alerts: any[]; category: Category; loading: boolean; threshold: number; soundEnabled: boolean; onSaveThreshold: (value: number) => void; onSoundEnabledChange: (enabled: boolean) => void }) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [thresholdInput, setThresholdInput] = useState(String(threshold));
   useEffect(() => {
     setThresholdInput(String(threshold));
   }, [threshold]);
-  const valid = alerts.filter((alert) => safeCategory(alert.category));
+  const valid = alerts.filter((alert) => safeCategory(alert.category) === category);
   const saveThreshold = () => {
     const value = Math.floor(Number(thresholdInput));
     if (Number.isFinite(value) && value >= 1 && value <= 100) {
@@ -729,7 +730,7 @@ function AlertsPanel({ alerts, loading, threshold, soundEnabled, onSaveThreshold
   };
   return (
     <section className="panel min-w-0 rounded-xl p-4 sm:p-5">
-       <SectionHeading eyebrow="market watch" title="Detected alerts" detail={`Buy and sell activity affecting ${threshold}+ units`} action={<div className="flex items-center gap-2"><button type="button" data-testid="button-alert-settings" onClick={() => setSettingsOpen((open) => !open)} className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1.5 text-[10px] font-bold transition-colors ${settingsOpen ? 'border-[hsl(var(--accent)/.5)] bg-[hsl(var(--accent)/.1)] text-[hsl(var(--accent))]' : 'border-[hsl(var(--card-border))] text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]'}`}><Settings2 size={13} /> Settings</button><Bell size={17} className="text-[hsl(var(--accent))]" /></div>} />
+       <SectionHeading eyebrow="market watch" title="Detected alerts" detail={`Buy and sell activity affecting ${threshold}+ ${categoryPlural[category].toLowerCase()}`} action={<div className="flex items-center gap-2"><button type="button" data-testid="button-alert-settings" onClick={() => setSettingsOpen((open) => !open)} className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1.5 text-[10px] font-bold transition-colors ${settingsOpen ? 'border-[hsl(var(--accent)/.5)] bg-[hsl(var(--accent)/.1)] text-[hsl(var(--accent))]' : 'border-[hsl(var(--card-border))] text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]'}`}><Settings2 size={13} /> Settings</button><Bell size={17} className="text-[hsl(var(--accent))]" /></div>} />
        {settingsOpen && <div data-testid="alert-settings" className="mb-4 rounded-lg border border-[hsl(var(--accent)/.3)] bg-[hsl(var(--accent)/.06)] p-3"><div className="flex items-start justify-between gap-3"><div><p className="text-xs font-bold">Alert sensitivity</p><p className="mt-1 text-[10px] leading-4 text-[hsl(var(--muted-foreground))]">Show alerts when at least this many units are added or removed.</p></div><button type="button" onClick={() => setSettingsOpen(false)} className="text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]" aria-label="Close alert settings"><X size={14} /></button></div><div className="mt-3 flex items-end gap-2"><label className="flex-1"><span className="mono block text-[9px] uppercase tracking-wider text-[hsl(var(--muted-foreground))]">minimum units</span><input data-testid="input-alert-threshold" type="number" min="1" max="100" step="1" value={thresholdInput} onChange={(event) => setThresholdInput(event.target.value)} className="mt-1 w-full rounded-md border border-[hsl(var(--card-border))] bg-[hsl(var(--secondary)/.72)] px-2 py-1.5 text-xs outline-none focus:border-[hsl(var(--accent))]" /></label><button type="button" data-testid="button-save-alert-settings" onClick={saveThreshold} className="inline-flex h-[31px] items-center gap-1.5 rounded-md bg-[hsl(var(--accent))] px-2.5 text-[10px] font-bold text-[hsl(var(--accent-foreground))] hover:opacity-85"><Check size={12} /> Save</button></div><div className="mt-3 flex items-center justify-between gap-3 border-t border-[hsl(var(--accent)/.18)] pt-3"><div><p className="text-xs font-bold">Alert sound</p><p className="mt-1 text-[10px] leading-4 text-[hsl(var(--muted-foreground))]">Play a chime when a new alert is detected.</p></div><div className="flex shrink-0 items-center gap-1.5"><button type="button" data-testid="button-test-alert-sound" onClick={() => playAlertSound()} className="rounded-md border border-[hsl(var(--card-border))] px-2 py-1.5 text-[10px] font-bold text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]">Test</button><button type="button" data-testid="button-toggle-alert-sound" aria-pressed={soundEnabled} onClick={() => onSoundEnabledChange(!soundEnabled)} className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1.5 text-[10px] font-bold transition-colors ${soundEnabled ? 'border-[hsl(var(--primary)/.45)] bg-[hsl(var(--primary)/.1)] text-[hsl(var(--primary))]' : 'border-[hsl(var(--card-border))] text-[hsl(var(--muted-foreground))]'}`}>{soundEnabled ? <Volume2 size={13} /> : <VolumeX size={13} />} {soundEnabled ? 'On' : 'Off'}</button></div></div></div>}
       {loading ? <div className="space-y-2"><Skeleton className="h-16 w-full" /><Skeleton className="h-16 w-full" /></div> : valid.length === 0 ? <div data-testid="empty-alerts" className="rounded-lg border border-dashed border-[hsl(var(--card-border))] px-4 py-9 text-center"><ShieldCheck size={20} className="mx-auto text-[hsl(var(--chart-3))]" /><p className="mt-2 text-sm font-semibold">No market alerts</p><p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">No material activity has been detected in the current alert window.</p></div> : <div className="space-y-2">{valid.map((alert) => { const buy = alert.type === 'massive_buy'; return <div data-testid={`row-alert-${alert.id}`} key={alert.id} className={`rounded-lg border p-3 ${buy ? 'border-[hsl(var(--chart-3)/.22)] bg-[hsl(var(--chart-3)/.05)]' : 'border-[hsl(var(--accent)/.22)] bg-[hsl(var(--accent)/.05)]'}`}><div className="flex items-start gap-3"><span className={`mt-0.5 rounded-md p-1.5 ${buy ? 'bg-[hsl(var(--chart-3)/.12)] text-[hsl(var(--chart-3))]' : 'bg-[hsl(var(--accent)/.12)] text-[hsl(var(--accent))]'}`}>{buy ? <ArrowUpRight size={15} /> : <ArrowDownRight size={15} />}</span><div className="min-w-0 flex-1"><div className="flex items-center justify-between gap-2"><p className="text-xs font-bold">{buy ? 'Massive buy' : 'Massive sell'} · {categoryShort[safeCategory(alert.category) || 'elytra']}</p><span className="mono text-[10px] text-[hsl(var(--muted-foreground))]">{formatRelative(alert.detectedAt)}</span></div><p className="mt-1 text-[11px] text-[hsl(var(--muted-foreground))]">{formatNumber(alert.affectedQuantity)} units affected{alert.estimatedValue != null ? ` · estimated ${formatPrice(alert.estimatedValue)}` : ''}</p>{alert.percentageChange != null && <div className="mt-2 flex gap-3 text-[10px]"><span className={buy ? 'text-[hsl(var(--chart-3))]' : 'text-[hsl(var(--accent))]'}>{buy ? 'Demand signal' : 'Supply signal'} {alert.percentageChange > 0 ? '+' : ''}{alert.percentageChange.toFixed(1)}%</span>{alert.previousPrice != null && alert.currentPrice != null && <span className="text-[hsl(var(--muted-foreground))]">{formatPrice(alert.previousPrice)} → {formatPrice(alert.currentPrice)}</span>}</div>}</div></div></div>; })}</div>}
     </section>
@@ -739,19 +740,20 @@ function AlertsPanel({ alerts, loading, threshold, soundEnabled, onSaveThreshold
 export default function Dashboard() {
   const [category, setCategory] = useState<Category>(CATEGORIES[0]);
    const [historyRange, setHistoryRange] = useState<Range>('hour');
-  const [listingCategory] = useState<Category>(CATEGORIES[0]);
-  const [transactionCategory] = useState<Category>(CATEGORIES[0]);
   const [listingSort, setListingSort] = useState<ListingSort>('recent');
   const [medianEditorOpen, setMedianEditorOpen] = useState(false);
-  const [customMedian, setCustomMedian] = useState<number | null>(() => readStoredNumber(SETTINGS_STORAGE_KEYS.median, null));
+  const [customMedianByCategory, setCustomMedianByCategory] = useState<Record<Category, number | null>>(() => ({
+    elytra: readStoredNumber(SETTINGS_STORAGE_KEYS.median, null),
+    netherite_block: readStoredNumber(`${SETTINGS_STORAGE_KEYS.median}-netherite_block`, null),
+  }));
   const [alertThreshold, setAlertThreshold] = useState(() => Math.floor(readStoredNumber(SETTINGS_STORAGE_KEYS.alertThreshold, 10) ?? 10));
    const [alertSoundEnabled, setAlertSoundEnabled] = useState(() => readStoredBoolean(SETTINGS_STORAGE_KEYS.alertSound, true));
    const seenAlertIds = useRef<Set<string> | null>(null);
 
    const historyParams = useMemo(() => ({ range: historyRange, category }), [category, historyRange]);
-  const listingParams = useMemo(() => ({ sort: listingSort, category: listingCategory }), [listingCategory, listingSort]);
-  const transactionParams = useMemo(() => ({ category: transactionCategory }), [transactionCategory]);
-  const alertParams = useMemo(() => ({ limit: 8, threshold: alertThreshold }), [alertThreshold]);
+  const listingParams = useMemo(() => ({ sort: listingSort, category }), [category, listingSort]);
+  const transactionParams = useMemo(() => ({ category }), [category]);
+  const alertParams = useMemo(() => ({ category, limit: 8, threshold: alertThreshold }), [alertThreshold, category]);
 
   const liveQueryOptions = { refetchInterval: 5000, refetchIntervalInBackground: true, staleTime: 1000 };
   const dashboardQuery = useGetElytraDashboard({ query: { queryKey: getGetElytraDashboardQueryKey(), ...liveQueryOptions } });
@@ -780,10 +782,12 @@ export default function Dashboard() {
      if (isNewAlert && alertSoundEnabled) playAlertSound();
    }, [alertSoundEnabled, alerts, alertsQuery.isSuccess]);
   const selectedStat = stats.find((stat) => stat.category === category);
-  const benchmarkMedian = customMedian ?? selectedStat?.lowest ?? null;
+   const customMedian = customMedianByCategory[category];
+   const benchmarkMedian = customMedian ?? selectedStat?.lowest ?? null;
   const saveMedian = (value: number | null) => {
-    setCustomMedian(value);
-    writeStoredNumber(SETTINGS_STORAGE_KEYS.median, value);
+     setCustomMedianByCategory((current) => ({ ...current, [category]: value }));
+     writeStoredNumber(`${SETTINGS_STORAGE_KEYS.median}-${category}`, value);
+     if (category === 'elytra') writeStoredNumber(SETTINGS_STORAGE_KEYS.median, value);
   };
   const saveAlertThreshold = (value: number) => {
     setAlertThreshold(value);
@@ -798,16 +802,16 @@ export default function Dashboard() {
   return (
     <main className="min-h-[100dvh] shell-grid">
       <header className="border-b border-[hsl(var(--border))] bg-[hsl(var(--background)/.86)] backdrop-blur-md">
-        <div className="mx-auto flex max-w-[1560px] items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
-          <div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl border border-[hsl(var(--primary)/.35)] bg-[hsl(var(--primary)/.1)]"><img src="/elytra-logo.png" alt="" className="h-full w-full object-contain" /></div><div><p className="display text-base font-bold tracking-tight">DonutSMP <span className="text-[hsl(var(--primary))]">/ Elytra</span></p><p className="mono text-[9px] uppercase tracking-[.2em] text-[hsl(var(--muted-foreground))]">market instrument panel</p></div></div>
+         <div className="mx-auto flex max-w-[1560px] flex-wrap items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:flex-nowrap lg:px-8">
+           <div className="flex min-w-0 flex-1 items-center gap-3"><div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-[hsl(var(--primary)/.35)] bg-[hsl(var(--primary)/.1)]"><img src="/elytra-logo.png" alt="" className="h-full w-full object-contain" /></div><div className="min-w-0"><p className="display truncate text-base font-bold tracking-tight">DonutSMP <span className="text-[hsl(var(--primary))]">/ {categoryName[category]}</span></p><p className="mono truncate text-[9px] uppercase tracking-[.2em] text-[hsl(var(--muted-foreground))]">market instrument panel</p></div><nav className="ml-2 flex max-w-full shrink-0 gap-1 overflow-x-auto rounded-lg border border-[hsl(var(--card-border))] bg-[hsl(var(--secondary)/.45)] p-1" aria-label="Market category"><span className="sr-only">Choose a market</span>{CATEGORIES.map((item) => <button key={item} type="button" role="tab" aria-selected={category === item} data-testid={`tab-market-${item}`} onClick={() => { setCategory(item); setMedianEditorOpen(false); }} className={`whitespace-nowrap rounded-md px-2.5 py-1.5 text-[10px] font-bold transition-colors sm:px-3 ${category === item ? 'bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))] shadow-sm' : 'text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]'}`}>{categoryShort[item]}</button>)}</nav></div>
             <div className="flex items-center gap-2 sm:gap-5"><div className="hidden items-center gap-2 text-right sm:flex"><span className="h-1.5 w-1.5 rounded-full bg-[hsl(var(--chart-3))]" /><span className="mono text-[10px] uppercase tracking-wider text-[hsl(var(--muted-foreground))]">20-page AH scan / 10s</span></div><button type="button" data-testid="button-refresh-all" onClick={refetchAll} className="inline-flex items-center gap-2 rounded-lg border border-[hsl(var(--card-border))] bg-[hsl(var(--secondary)/.6)] px-3 py-2 text-xs font-bold text-[hsl(var(--foreground))] transition-colors hover:border-[hsl(var(--primary)/.55)] hover:text-[hsl(var(--primary))]"><RefreshCw size={14} className={dashboardQuery.isFetching ? 'animate-spin' : ''} /><span className="hidden sm:inline">Refresh</span></button></div>
         </div>
       </header>
       <div className="mx-auto max-w-[1560px] px-4 pb-10 pt-6 sm:px-6 lg:px-8">
         <div className="fade-up"><ApiBanner api={dashboard?.api} generatedAt={dashboard?.generatedAt} isError={!!dashboardQuery.isError} onRetry={refetchAll} /></div>
-         <div className="fade-up-delay mt-7 flex flex-col justify-between gap-4 md:flex-row md:items-end"><div><p className="mono text-[10px] uppercase tracking-[.24em] text-[hsl(var(--accent))]">live inventory monitor</p><h1 className="display mt-2 text-3xl font-bold tracking-[-.04em] sm:text-4xl">The Elytra market read.</h1><p className="mt-2 max-w-2xl text-sm leading-6 text-[hsl(var(--muted-foreground))]">A clean view of what the market is reporting now. Direct Elytra listings only, with no enchantment filter and no synthetic trend lines.</p></div><div className="flex items-center gap-2 text-xs text-[hsl(var(--muted-foreground))]"><DatabaseZap size={14} className="text-[hsl(var(--primary))]" /><span className="mono">{dashboard ? `${formatNumber(dashboard.qualifyingUnits)} Elytras on AH` : 'awaiting inventory count'}</span></div></div>
-             {dashboardQuery.isLoading ? <div className="mt-6 grid gap-3 md:grid-cols-1"><Skeleton className="h-48 rounded-xl" /></div> : dashboardQuery.isError && !dashboard ? <div data-testid="error-dashboard" className="panel amber-rule mt-6 rounded-xl p-8 text-center"><ServerCrash size={25} className="mx-auto text-[hsl(var(--accent))]" /><h2 className="display mt-3 text-lg font-bold">Market snapshot unavailable</h2><p className="mx-auto mt-2 max-w-md text-sm text-[hsl(var(--muted-foreground))]">The dashboard endpoint is offline. Nothing is being inferred from missing data.</p><button type="button" data-testid="button-retry-dashboard-empty" onClick={refetchAll} className="mt-5 inline-flex items-center gap-2 rounded-lg bg-[hsl(var(--primary))] px-4 py-2 text-xs font-bold text-[hsl(var(--primary-foreground))]"><RefreshCw size={14} /> Retry connection</button></div> : <><div className="fade-up-delay-2 mt-6 grid gap-3">{CATEGORIES.map((item) => <StatCard key={item} category={item} stat={stats.find((stat) => stat.category === item)} benchmarkMedian={customMedian ?? stats.find((stat) => stat.category === item)?.lowest ?? null} hasCustomMedian={customMedian != null} selected={category === item} onSelect={() => setCategory(item)} onEditMedian={() => setMedianEditorOpen(true)} />)}</div><div className="mt-6 grid items-start gap-4 xl:grid-cols-[minmax(0,1.65fr)_minmax(300px,.8fr)]"><HistoryPanel points={history} loading={historyQuery.isLoading} category={category} range={historyRange} onRangeChange={setHistoryRange} median={benchmarkMedian} onSaveMedian={saveMedian} medianEditorOpen={medianEditorOpen} onCloseMedianEditor={() => setMedianEditorOpen(false)} /><div className="grid gap-4"><PredictionPanel range={historyRange} loading={historyQuery.isLoading} /><AlertsPanel alerts={alerts} loading={alertsQuery.isLoading} threshold={alertThreshold} soundEnabled={alertSoundEnabled} onSaveThreshold={saveAlertThreshold} onSoundEnabledChange={updateAlertSoundEnabled} /></div></div><div className="mt-4 grid gap-4 xl:grid-cols-[1.15fr_1fr]"><ListingsPanel listings={listings} loading={listingsQuery.isLoading} category={listingCategory} sort={listingSort} setSort={setListingSort} /><TransactionsPanel transactions={transactions} loading={transactionsQuery.isLoading} category={transactionCategory} /></div><MarketInventoryPanel dashboard={dashboard} loading={dashboardQuery.isFetching && !dashboard} /></>}
-          <footer className="mt-7 flex flex-col gap-2 border-t border-[hsl(var(--border))] pt-4 text-[10px] text-[hsl(var(--muted-foreground))] sm:flex-row sm:items-center sm:justify-between"><span className="inline-flex items-center gap-2"><Check size={13} className="text-[hsl(var(--chart-3))]" /> Live scope locked to DonutSMP Elytra search</span><span className="mono">{dashboard?.generatedAt ? `snapshot generated ${formatTime(dashboard.generatedAt, true)}` : 'snapshot time unavailable'}</span></footer>
+          <div className="fade-up-delay mt-7 flex flex-col justify-between gap-4 md:flex-row md:items-end"><div><p className="mono text-[10px] uppercase tracking-[.24em] text-[hsl(var(--accent))]">live inventory monitor</p><h1 className="display mt-2 text-3xl font-bold tracking-[-.04em] sm:text-4xl">The {categoryName[category]} market read.</h1><p className="mt-2 max-w-2xl text-sm leading-6 text-[hsl(var(--muted-foreground))]">A clean view of what the market is reporting now. Direct {categoryPlural[category].toLowerCase()} listings only, with no enchantment filter and no synthetic trend lines.</p></div><div className="flex items-center gap-2 text-xs text-[hsl(var(--muted-foreground))]"><DatabaseZap size={14} className="text-[hsl(var(--primary))]" /><span className="mono">{selectedStat ? `${formatNumber(selectedStat.activeUnits)} ${categoryPlural[category]} on AH` : 'awaiting inventory count'}</span></div></div>
+              {dashboardQuery.isLoading ? <div className="mt-6 grid gap-3 md:grid-cols-2"><Skeleton className="h-48 rounded-xl" /><Skeleton className="h-48 rounded-xl" /></div> : dashboardQuery.isError && !dashboard ? <div data-testid="error-dashboard" className="panel amber-rule mt-6 rounded-xl p-8 text-center"><ServerCrash size={25} className="mx-auto text-[hsl(var(--accent))]" /><h2 className="display mt-3 text-lg font-bold">Market snapshot unavailable</h2><p className="mx-auto mt-2 max-w-md text-sm text-[hsl(var(--muted-foreground))]">The dashboard endpoint is offline. Nothing is being inferred from missing data.</p><button type="button" data-testid="button-retry-dashboard-empty" onClick={refetchAll} className="mt-5 inline-flex items-center gap-2 rounded-lg bg-[hsl(var(--primary))] px-4 py-2 text-xs font-bold text-[hsl(var(--primary-foreground))]"><RefreshCw size={14} /> Retry connection</button></div> : <><div className="fade-up-delay-2 mt-6 grid gap-3 md:grid-cols-2">{CATEGORIES.map((item) => <StatCard key={item} category={item} stat={stats.find((stat) => stat.category === item)} benchmarkMedian={customMedianByCategory[item] ?? stats.find((stat) => stat.category === item)?.lowest ?? null} hasCustomMedian={customMedianByCategory[item] != null} selected={category === item} onSelect={() => setCategory(item)} onEditMedian={() => setMedianEditorOpen(true)} />)}</div><div className="mt-6 grid items-start gap-4 xl:grid-cols-[minmax(0,1.65fr)_minmax(300px,.8fr)]"><HistoryPanel points={history} loading={historyQuery.isLoading} category={category} range={historyRange} onRangeChange={setHistoryRange} median={benchmarkMedian} onSaveMedian={saveMedian} medianEditorOpen={medianEditorOpen} onCloseMedianEditor={() => setMedianEditorOpen(false)} /><div className="grid gap-4"><PredictionPanel range={historyRange} category={category} loading={historyQuery.isLoading} /><AlertsPanel alerts={alerts} category={category} loading={alertsQuery.isLoading} threshold={alertThreshold} soundEnabled={alertSoundEnabled} onSaveThreshold={saveAlertThreshold} onSoundEnabledChange={updateAlertSoundEnabled} /></div></div><div className="mt-4 grid gap-4 xl:grid-cols-[1.15fr_1fr]"><ListingsPanel listings={listings} loading={listingsQuery.isLoading} category={category} sort={listingSort} setSort={setListingSort} /><TransactionsPanel transactions={transactions} loading={transactionsQuery.isLoading} category={category} /></div><MarketInventoryPanel stat={selectedStat} category={category} loading={dashboardQuery.isFetching && !dashboard} /></>}
+          <footer className="mt-7 flex flex-col gap-2 border-t border-[hsl(var(--border))] pt-4 text-[10px] text-[hsl(var(--muted-foreground))] sm:flex-row sm:items-center sm:justify-between"><span className="inline-flex items-center gap-2"><Check size={13} className="text-[hsl(var(--chart-3))]" /> Live scope locked to DonutSMP {categoryName[category]} search</span><span className="mono">{dashboard?.generatedAt ? `snapshot generated ${formatTime(dashboard.generatedAt, true)}` : 'snapshot time unavailable'}</span></footer>
       </div>
     </main>
   );

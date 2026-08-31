@@ -6,7 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface AnalyzeElytraListingBody {
+export interface ElytraListingAnalysisInput {
   /** @minLength 1 */
   listingId: string;
 }

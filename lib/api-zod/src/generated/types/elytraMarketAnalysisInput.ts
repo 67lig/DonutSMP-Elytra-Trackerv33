@@ -5,8 +5,10 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { ElytraCategory } from './elytraCategory';
 import type { TimeRange } from './timeRange';
 
-export interface AnalyzeElytraMarketBody {
+export interface ElytraMarketAnalysisInput {
+  category?: ElytraCategory;
   range?: TimeRange;
 }

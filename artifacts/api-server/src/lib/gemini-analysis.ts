@@ -210,12 +210,13 @@ function parseMarketModelJson(text: string): {
 export async function analyzeElytraMarket(context: MarketAnalysisContext) {
   const prompt = [
     "You are a cautious Minecraft DonutSMP Elytra market analyst.",
-    "Decide whether a player should buy an Elytra right now using only the supplied live auction pages and selected stored price history.",
+    `Decide whether a player should buy a ${context.category === "netherite_block" ? "Netherite Block" : "Elytra"} right now using only the supplied live auction pages and selected stored price history.`,
     "Return JSON only with exactly these keys: recommendation, confidence, summary, reasons, risks.",
     'recommendation must be exactly "YES" when the evidence supports buying now, or exactly "NO" when the player should avoid buying or consider selling instead.',
     "confidence is an integer from 0 to 100 and represents confidence in the YES/NO decision, not guaranteed accuracy.",
     "Keep summary to two sentences maximum. Keep reasons and risks concise. Do not invent facts or use markdown.",
     JSON.stringify({
+      category: context.category,
       auctionPageOne: context.pageOneListings,
       auctionPageTwo: context.pageTwoListings,
       selectedPriceHistory: context.hourlyHistory,

@@ -12,10 +12,24 @@ import { logger } from "./logger";
 
 export const ELYTRA_CATEGORIES = [
   "elytra",
+  "netherite_block",
 ] as const;
 export type ElytraCategory = (typeof ELYTRA_CATEGORIES)[number];
 
 type RawRecord = Record<string, unknown>;
+
+const CATEGORY_CONFIG: Record<ElytraCategory, { search: string; itemIds: string[]; label: string }> = {
+  elytra: {
+    search: "elytra",
+    itemIds: ["elytra", "minecraft:elytra"],
+    label: "Elytra",
+  },
+  netherite_block: {
+    search: "netherite_block",
+    itemIds: ["netherite_block", "minecraft:netherite_block"],
+    label: "Netherite Block",
+  },
+};
 
 type NormalizedListing = {
   id: string;
@@ -32,6 +46,7 @@ type NormalizedListing = {
 };
 
 export type MarketAnalysisContext = {
+  category: ElytraCategory;
   pageOneListings: NormalizedListing[];
   pageTwoListings: NormalizedListing[];
   hourlyHistory: Awaited<ReturnType<ElytraMarketService["getHistory"]>>;
@@ -80,9 +95,9 @@ type FetchListingsResult = {
   failedPages: Record<string, string>;
 };
 
-function requestAuctionPage(page: number, apiKey: string): Promise<unknown> {
+function requestAuctionPage(page: number, apiKey: string, search: string): Promise<unknown> {
   const body = JSON.stringify({
-    search: "elytra",
+    search,
     sort: "lowest_price, highest_price, recently_listed, last_listed",
   });
 
@@ -204,12 +219,13 @@ function extractEnchantments(record: RawRecord): string[] {
   return collect(source);
 }
 
-function isElytra(record: RawRecord): boolean {
+function isMarketCategory(record: RawRecord, category: ElytraCategory): boolean {
   const item = asRecord(record.item) ?? asRecord(record.item_data) ?? {};
   const itemId = asString(nestedValue(item, ["id", "item_id", "itemId"]))?.toLowerCase();
-  if (itemId) return itemId === "elytra" || itemId.endsWith(":elytra");
+  const config = CATEGORY_CONFIG[category];
+  if (itemId) return config.itemIds.includes(itemId);
   const recordItemId = asString(nestedValue(record, ["item_id", "itemId"]))?.toLowerCase();
-  if (recordItemId) return recordItemId === "elytra" || recordItemId.endsWith(":elytra");
+  if (recordItemId) return config.itemIds.includes(recordItemId);
   const searchable = [
     ...["display_name", "displayName", "name", "material", "type", "item_id", "itemId"].map((key) => record[key]),
     ...["display_name", "displayName", "name", "material", "type", "id"].map((key) => item[key]),
@@ -218,7 +234,9 @@ function isElytra(record: RawRecord): boolean {
     .filter((value): value is string => Boolean(value))
     .join(" ")
     .toLowerCase();
-  return searchable.includes("elytra");
+  return category === "elytra"
+    ? searchable.includes("elytra")
+    : searchable.includes("netherite block") || searchable.includes("netherite_block");
 }
 
 function formatTimeRemaining(value: unknown): string | null {
@@ -243,8 +261,8 @@ function buildPollPlan(): ScheduledRequest[] {
   }));
 }
 
-function normalizeListing(record: RawRecord, collectedAt: Date): NormalizedListing | null {
-  if (!isElytra(record)) return null;
+function normalizeListing(record: RawRecord, collectedAt: Date, category: ElytraCategory): NormalizedListing | null {
+  if (!isMarketCategory(record, category)) return null;
   const item = asRecord(record.item) ?? asRecord(record.item_data) ?? {};
   const enchantments = extractEnchantments(record);
   const price = asNumber(nestedValue(record, ["price", "cost", "amount", "starting_price", "bid"]) ??
@@ -252,7 +270,7 @@ function normalizeListing(record: RawRecord, collectedAt: Date): NormalizedListi
   if (price === null || price < 0) return null;
 
   const displayName = asString(nestedValue(record, ["display_name", "displayName", "name"]) ??
-    nestedValue(item, ["display_name", "displayName", "name"])) ?? "Elytra";
+    nestedValue(item, ["display_name", "displayName", "name"])) ?? CATEGORY_CONFIG[category].label;
   const sellerRecord = asRecord(record.seller) ?? asRecord(record.owner);
   const seller = asString(nestedValue(record, ["seller_name", "sellerName", "username"])) ??
     asString(nestedValue(sellerRecord ?? {}, ["name", "username"])) ?? "Unknown seller";
@@ -266,7 +284,7 @@ function normalizeListing(record: RawRecord, collectedAt: Date): NormalizedListi
   const itemId = asString(nestedValue(record, ["item_id", "itemId", "auction_id", "auctionId"]) ??
     nestedValue(item, ["id", "item_id", "itemId"]));
   const rawId = asString(nestedValue(record, ["id", "auction_id", "auctionId", "uuid"])) ??
-    `${seller}|${price}|${quantity}|${displayName}|${enchantments.join(",")}`;
+    `${category}|${itemId ?? ""}|${seller}|${price}|${quantity}|${displayName}|${enchantments.join(",")}`;
   const id = createHash("sha1").update(rawId).digest("hex").slice(0, 32);
 
   return {
@@ -355,16 +373,17 @@ export class ElytraMarketService {
     };
   }
 
-  private async fetchPage(page: number, requestKey: string): Promise<unknown> {
+  private async fetchPage(category: ElytraCategory, page: number, requestKey: string): Promise<unknown> {
     const apiKey = process.env.DONUTSMP_API_KEY;
     if (!apiKey) throw new Error("DONUTSMP_API_KEY is not configured");
     const response = await this.requestManager.request(requestKey, () =>
-      requestAuctionPage(page, apiKey),
+      requestAuctionPage(page, apiKey, CATEGORY_CONFIG[category].search),
     );
     return response;
   }
 
   private async fetchListings(
+    category: ElytraCategory,
     onPageOneReady?: (listings: NormalizedListing[]) => void,
   ): Promise<FetchListingsResult> {
     const payloads = new Map<number, { sequence: number; payload: unknown }>();
@@ -378,8 +397,9 @@ export class ElytraMarketService {
     await Promise.all(plan.map(async (request) => {
       try {
         const payload = await this.fetchPage(
+          category,
           request.page,
-          `auction:cycle:${cycle}:${request.sequence}`,
+          `auction:${category}:cycle:${cycle}:${request.sequence}`,
         );
         const previous = payloads.get(request.page);
         if (!previous || request.sequence > previous.sequence) {
@@ -388,7 +408,7 @@ export class ElytraMarketService {
         if (request.page === 1 && !pageOneReported) {
           pageOneReported = true;
           const pageOneListings = extractRows(payload)
-            .map((row) => normalizeListing(row, collectedAt))
+            .map((row) => normalizeListing(row, collectedAt, category))
             .filter((listing): listing is NormalizedListing => listing !== null);
           onPageOneReady?.(pageOneListings);
         }
@@ -401,7 +421,7 @@ export class ElytraMarketService {
     const seen = new Map<string, NormalizedListing>();
     for (const [page, { payload }] of payloads.entries()) {
       for (const row of extractRows(payload)) {
-        const listing = normalizeListing(row, collectedAt);
+        const listing = normalizeListing(row, collectedAt, category);
         if (listing) {
           seen.set(listing.id, listing);
         }
@@ -422,18 +442,33 @@ export class ElytraMarketService {
     };
   }
 
-  private async recordMarket(listings: NormalizedListing[]): Promise<void> {
+  private async recordMarket(results: ReadonlyMap<ElytraCategory, FetchListingsResult>): Promise<void> {
     const previousListings = await db.select().from(elytraListingsTable);
     const previousIds = new Set(previousListings.map((listing) => listing.id));
+    const completedCategories = new Set(
+      [...results.entries()]
+        .filter(([, result]) => result.complete)
+        .map(([category]) => category),
+    );
+    const listings = [...results.entries()]
+      .filter(([, result]) => result.complete)
+      .flatMap(([, result]) => result.listings);
     const previousByCategory = new Map<ElytraCategory, NormalizedListing[]>();
     const currentByCategory = new Map<ElytraCategory, NormalizedListing[]>();
     for (const category of ELYTRA_CATEGORIES) {
       previousByCategory.set(category, previousListings.filter((listing) => listing.category === category) as NormalizedListing[]);
-      currentByCategory.set(category, listings.filter((listing) => listing.category === category));
+      currentByCategory.set(
+        category,
+        results.get(category)?.complete
+          ? results.get(category)?.listings ?? []
+          : previousByCategory.get(category) ?? [],
+      );
     }
 
     await db.transaction(async (tx) => {
-      await tx.delete(elytraListingsTable);
+      for (const category of completedCategories) {
+        await tx.delete(elytraListingsTable).where(eq(elytraListingsTable.category, category));
+      }
       if (listings.length) await tx.insert(elytraListingsTable).values(listings);
       const newListings = listings.filter((listing) => !previousIds.has(listing.id));
       if (newListings.length) {
@@ -452,6 +487,7 @@ export class ElytraMarketService {
     });
 
     for (const category of ELYTRA_CATEGORIES) {
+      if (!completedCategories.has(category)) continue;
       const current = currentByCategory.get(category) ?? [];
       if (!current.length) continue;
       const prices = current.map((listing) => listing.price).sort((a, b) => a - b);
@@ -516,41 +552,60 @@ export class ElytraMarketService {
     if (this.refreshPromise) return this.refreshPromise;
     this.refreshPromise = (async () => {
       try {
-        const result = await this.fetchListings((pageOneListings) => {
+        const results = new Map<ElytraCategory, FetchListingsResult>();
+        for (const category of ELYTRA_CATEGORIES) {
+          const result = await this.fetchListings(category, (pageOneListings) => {
+            this.state = {
+              connected: true,
+              lastUpdated: new Date(),
+              message: pageOneListings.length
+                ? `Live DonutSMP ${CATEGORY_CONFIG[category].label.toLowerCase()} polling`
+                : "Connected to DonutSMP auction feed",
+            };
+          });
+          results.set(category, result);
+        }
+
+        const completeResults = [...results.values()].filter((result) => result.complete);
+        const incompleteResults = [...results.values()].filter((result) => !result.complete);
+        if (completeResults.length) {
+          await this.recordMarket(results);
+          const scannedPages = completeResults.reduce((sum, result) => sum + result.pagesScanned, 0);
+          const qualifyingListings = completeResults.reduce((sum, result) => sum + result.listings.length, 0);
+          const qualifyingUnits = completeResults.reduce(
+            (sum, result) => sum + result.listings.reduce((listingSum, listing) => listingSum + listing.quantity, 0),
+            0,
+          );
           this.state = {
-            connected: true,
+            connected: incompleteResults.length === 0,
             lastUpdated: new Date(),
-            message: pageOneListings.length
-              ? "Live DonutSMP auction polling"
-              : "Connected to DonutSMP auction feed",
-          };
-        });
-        if (result.complete) {
-          await this.recordMarket(result.listings);
-          this.state = {
-            connected: true,
-            lastUpdated: new Date(),
-            message: result.listings.length
-              ? `Live DonutSMP auction data · scanned ${result.pagesScanned} pages`
-              : `Connected, but no direct Elytra listings were found across ${result.pagesScanned} pages`,
+            message: incompleteResults.length
+              ? `Live market data · ${completeResults.length}/${ELYTRA_CATEGORIES.length} categories refreshed`
+              : `Live DonutSMP auction data · scanned ${scannedPages} pages across ${ELYTRA_CATEGORIES.length} markets`,
           };
           logger.info({
-            qualifyingListings: result.listings.length,
-            qualifyingUnits: result.listings.reduce((sum, listing) => sum + listing.quantity, 0),
-            pagesScanned: result.pagesScanned,
+            qualifyingListings,
+            qualifyingUnits,
+            pagesScanned: scannedPages,
+            categoriesRefreshed: completeResults.length,
             scanIntervalMs: POLL_INTERVAL_MS,
-          }, "DonutSMP Elytra market full scan refreshed");
+          }, "DonutSMP market full scan refreshed");
         } else {
+          const pagesScanned = [...results.values()].reduce((sum, result) => sum + result.pagesScanned, 0);
           this.state = {
             connected: false,
             lastUpdated: this.state.lastUpdated,
-            message: `Partial Auction House scan (${result.pagesScanned}/${MAX_AUCTION_PAGES} pages); keeping the last complete snapshot`,
+            message: `Partial Auction House scan (${pagesScanned}/${MAX_AUCTION_PAGES * ELYTRA_CATEGORIES.length} pages); keeping the last complete snapshot`,
           };
           logger.warn({
-            pagesScanned: result.pagesScanned,
-            expectedPages: MAX_AUCTION_PAGES,
-            failedPages: result.failedPages,
-          }, "DonutSMP Elytra market scan incomplete");
+            pagesScanned,
+            expectedPages: MAX_AUCTION_PAGES * ELYTRA_CATEGORIES.length,
+            failedPages: Object.fromEntries(
+              [...results.entries()].flatMap(([category, result]) =>
+                Object.entries(result.failedPages).map(([page, message]) => [`${category}:${page}`, message]),
+              ),
+            ),
+          }, "DonutSMP market scan incomplete");
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : "Unknown DonutSMP error";
@@ -570,8 +625,7 @@ export class ElytraMarketService {
   }
 
   async getDashboard() {
-    const listings = (await db.select().from(elytraListingsTable))
-      .filter((listing) => listing.category === ELYTRA_CATEGORIES[0]);
+    const listings = await db.select().from(elytraListingsTable);
     const stats = ELYTRA_CATEGORIES.map((category) => {
       const categoryListings = listings.filter((listing) => listing.category === category);
       const prices = categoryListings
@@ -621,8 +675,8 @@ export class ElytraMarketService {
     const observationRows = await db.select().from(priceObservationsTable)
       .orderBy(asc(priceObservationsTable.timestamp));
     const snapshots = observationRows
-      .filter((row) => row.category === ELYTRA_CATEGORIES[0] &&
-        row.timestamp >= cutoff && (!category || row.category === category))
+       .filter((row) => row.category === (category ?? ELYTRA_CATEGORIES[0]) &&
+         row.timestamp >= cutoff)
       .map((row) => ({
         timestamp: row.timestamp,
         price: row.price,
@@ -663,7 +717,7 @@ export class ElytraMarketService {
       previousClose = close;
       return {
         id: index + 1,
-        category: ELYTRA_CATEGORIES[0],
+        category: category ?? ELYTRA_CATEGORIES[0],
         timestamp: new Date(bucketMs ? bucketKey : bucket[0].timestamp),
         price: close,
         open,
@@ -680,7 +734,7 @@ export class ElytraMarketService {
   async getListings(category?: ElytraCategory, sort = "lowest") {
     const rows = await db.select().from(elytraListingsTable);
     const filtered = rows.filter((row) =>
-      row.category === ELYTRA_CATEGORIES[0] && (!category || row.category === category),
+      !category || row.category === category,
     );
     return [...filtered].sort((a, b) => sort === "highest"
       ? b.price - a.price
@@ -714,7 +768,7 @@ export class ElytraMarketService {
     const average = prices.length ? prices.reduce((sum, price) => sum + price, 0) / prices.length : null;
 
     return {
-      listing: { ...listing, category: "elytra" as const },
+      listing: { ...listing, category: listing.category as ElytraCategory },
       marketContext: {
         lowest: prices[0] ?? null,
         median,
@@ -727,16 +781,19 @@ export class ElytraMarketService {
     };
   }
 
-  async getMarketAnalysisContext(range: HistoryRange = "hour"): Promise<MarketAnalysisContext> {
+  async getMarketAnalysisContext(
+    category: ElytraCategory = ELYTRA_CATEGORIES[0],
+    range: HistoryRange = "hour",
+  ): Promise<MarketAnalysisContext> {
     const [pageOnePayload, pageTwoPayload, selectedHistory, currentListings] = await Promise.all([
-      this.fetchPage(1, "auction:analysis:page:1"),
-      this.fetchPage(2, "auction:analysis:page:2"),
-      this.getHistory(ELYTRA_CATEGORIES[0], range),
+      this.fetchPage(category, 1, `auction:analysis:${category}:page:1`),
+      this.fetchPage(category, 2, `auction:analysis:${category}:page:2`),
+      this.getHistory(category, range),
       db.select().from(elytraListingsTable)
-        .where(eq(elytraListingsTable.category, ELYTRA_CATEGORIES[0])),
+        .where(eq(elytraListingsTable.category, category)),
     ]);
     const normalizePage = (payload: unknown) => extractRows(payload)
-      .map((row) => normalizeListing(row, new Date()))
+      .map((row) => normalizeListing(row, new Date(), category))
       .filter((listing): listing is NormalizedListing => listing !== null);
     const prices = currentListings.map((listing) => listing.price).sort((left, right) => left - right);
     const median = prices.length % 2
@@ -745,6 +802,7 @@ export class ElytraMarketService {
     const average = prices.length ? prices.reduce((sum, price) => sum + price, 0) / prices.length : null;
     const activeUnits = currentListings.reduce((sum, listing) => sum + listing.quantity, 0);
     return {
+      category,
       pageOneListings: normalizePage(pageOnePayload),
       pageTwoListings: normalizePage(pageTwoPayload),
       hourlyHistory: selectedHistory,
@@ -766,16 +824,16 @@ export class ElytraMarketService {
       .orderBy(desc(elytraTransactionsTable.timestamp))
       .limit(50);
     return rows.filter((row) =>
-      row.category === ELYTRA_CATEGORIES[0] && (!category || row.category === category),
+      !category || row.category === category,
     );
   }
 
-  async getAlerts(limit = 10, threshold = 10) {
+  async getAlerts(category?: ElytraCategory, limit = 10, threshold = 10) {
     const rows = await db.select().from(marketAlertsTable)
       .orderBy(desc(marketAlertsTable.detectedAt))
       .limit(Math.max(limit, 50));
     return rows.filter((row) =>
-      row.category === ELYTRA_CATEGORIES[0] &&
+      (!category || row.category === category) &&
       row.affectedQuantity >= threshold &&
       (row.type === "massive_buy" || row.type === "massive_sell"),
     ).slice(0, limit);

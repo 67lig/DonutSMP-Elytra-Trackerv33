@@ -23,7 +23,7 @@ export const HealthCheckResponse = zod.object({
  */
 export const GetElytraDashboardResponse = zod.object({
   "stats": zod.array(zod.object({
-  "category": zod.enum(['elytra']),
+  "category": zod.enum(['elytra', 'netherite_block']),
   "lowest": zod.number().nullable(),
   "highest": zod.number().nullable(),
   "average": zod.number().nullable(),
@@ -50,13 +50,13 @@ export const GetElytraDashboardResponse = zod.object({
  * @summary Get real Elytra price history
  */
 export const GetElytraHistoryQueryParams = zod.object({
-  "category": zod.enum(['elytra']).optional(),
+  "category": zod.enum(['elytra', 'netherite_block']).optional(),
   "range": zod.enum(['five_minutes', 'hour', 'today', 'seven_days', 'thirty_days', 'ninety_days', 'one_year', 'all_time']).optional()
 })
 
 export const GetElytraHistoryResponseItem = zod.object({
   "id": zod.number(),
-  "category": zod.enum(['elytra']),
+  "category": zod.enum(['elytra', 'netherite_block']),
   "timestamp": zod.coerce.date(),
   "price": zod.number(),
   "open": zod.number(),
@@ -76,7 +76,7 @@ export const GetElytraHistoryResponse = zod.array(GetElytraHistoryResponseItem)
 export const getElytraListingsQuerySortDefault = `lowest`;
 
 export const GetElytraListingsQueryParams = zod.object({
-  "category": zod.enum(['elytra']).optional(),
+  "category": zod.enum(['elytra', 'netherite_block']).optional(),
   "sort": zod.enum(['lowest', 'highest', 'recent']).default(getElytraListingsQuerySortDefault)
 })
 
@@ -84,7 +84,7 @@ export const GetElytraListingsResponseItem = zod.object({
   "id": zod.string(),
   "itemId": zod.string().nullable(),
   "displayName": zod.string(),
-  "category": zod.enum(['elytra']),
+  "category": zod.enum(['elytra', 'netherite_block']),
   "enchantments": zod.array(zod.string()),
   "price": zod.number(),
   "seller": zod.string(),
@@ -100,14 +100,14 @@ export const GetElytraListingsResponse = zod.array(GetElytraListingsResponseItem
  * @summary Get recent qualifying Elytra observations
  */
 export const GetElytraTransactionsQueryParams = zod.object({
-  "category": zod.enum(['elytra']).optional()
+  "category": zod.enum(['elytra', 'netherite_block']).optional()
 })
 
 export const GetElytraTransactionsResponseItem = zod.object({
   "id": zod.string(),
   "seller": zod.string(),
   "price": zod.number(),
-  "category": zod.enum(['elytra']),
+  "category": zod.enum(['elytra', 'netherite_block']),
   "enchantments": zod.array(zod.string()),
   "quantity": zod.number(),
   "timestamp": zod.coerce.date()
@@ -127,6 +127,7 @@ export const getElytraAlertsQueryThresholdMax = 100;
 
 
 export const GetElytraAlertsQueryParams = zod.object({
+  "category": zod.enum(['elytra', 'netherite_block']).optional(),
   "limit": zod.coerce.number().min(1).max(getElytraAlertsQueryLimitMax).default(getElytraAlertsQueryLimitDefault),
   "threshold": zod.coerce.number().min(1).max(getElytraAlertsQueryThresholdMax).default(getElytraAlertsQueryThresholdDefault).describe('Minimum number of units affected for an alert to be returned')
 })
@@ -134,7 +135,7 @@ export const GetElytraAlertsQueryParams = zod.object({
 export const GetElytraAlertsResponseItem = zod.object({
   "id": zod.number(),
   "type": zod.enum(['massive_buy', 'massive_sell']),
-  "category": zod.enum(['elytra']),
+  "category": zod.enum(['elytra', 'netherite_block']),
   "affectedQuantity": zod.number(),
   "previousPrice": zod.number().nullable(),
   "currentPrice": zod.number().nullable(),
@@ -166,7 +167,7 @@ export const AnalyzeElytraListingResponse = zod.object({
   "id": zod.string(),
   "itemId": zod.string().nullable(),
   "displayName": zod.string(),
-  "category": zod.enum(['elytra']),
+  "category": zod.enum(['elytra', 'netherite_block']),
   "enchantments": zod.array(zod.string()),
   "price": zod.number(),
   "seller": zod.string(),
@@ -198,12 +199,14 @@ export const AnalyzeElytraListingResponse = zod.object({
 
 
 /**
- * Sends DonutSMP auction pages one and two plus the selected stored price history range to Gemini.
+ * Sends the selected market supply total, DonutSMP auction pages one and two, and the selected stored price history range to Gemini.
  * @summary Ask Gemini for a market-level buy decision
  */
+export const analyzeElytraMarketBodyCategoryDefault = `elytra`;
 export const analyzeElytraMarketBodyRangeDefault = `hour`;
 
 export const AnalyzeElytraMarketBody = zod.object({
+  "category": zod.enum(['elytra', 'netherite_block']).default(analyzeElytraMarketBodyCategoryDefault),
   "range": zod.enum(['five_minutes', 'hour', 'today', 'seven_days', 'thirty_days', 'ninety_days', 'one_year', 'all_time']).default(analyzeElytraMarketBodyRangeDefault)
 })
 

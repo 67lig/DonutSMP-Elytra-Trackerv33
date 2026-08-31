@@ -95,6 +95,7 @@ paths:
       tags: [elytra]
       summary: Get real Elytra market alerts
       parameters:
+        - $ref: "#/components/parameters/Category"
         - name: limit
           in: query
           required: false
@@ -132,7 +133,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/AnalyzeElytraListingBody"
+              $ref: "#/components/schemas/ElytraListingAnalysisInput"
       responses:
         "200":
           description: Gemini recommendation
@@ -153,13 +154,13 @@ paths:
       operationId: analyzeElytraMarket
       tags: [elytra]
       summary: Ask Gemini for a market-level buy decision
-       description: Sends the current Elytra supply total, DonutSMP auction pages one and two, and the selected stored price history range to Gemini.
+      description: Sends the selected market supply total, DonutSMP auction pages one and two, and the selected stored price history range to Gemini.
       requestBody:
         required: false
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/AnalyzeElytraMarketBody"
+              $ref: "#/components/schemas/ElytraMarketAnalysisInput"
       responses:
         "200":
           description: Gemini market recommendation
@@ -203,7 +204,7 @@ components:
         - status
     ElytraCategory:
       type: string
-      enum: [elytra]
+      enum: [elytra, netherite_block]
     TimeRange:
       type: string
       enum: [five_minutes, hour, today, seven_days, thirty_days, ninety_days, one_year, all_time]
@@ -362,16 +363,19 @@ components:
           type: string
           format: date-time
       required: [id, type, category, affectedQuantity, previousPrice, currentPrice, percentageChange, estimatedValue, detectedAt]
-    AnalyzeElytraListingBody:
+    ElytraListingAnalysisInput:
       type: object
       properties:
         listingId:
           type: string
           minLength: 1
       required: [listingId]
-    AnalyzeElytraMarketBody:
+    ElytraMarketAnalysisInput:
       type: object
       properties:
+        category:
+          $ref: "#/components/schemas/ElytraCategory"
+          default: elytra
         range:
           $ref: "#/components/schemas/TimeRange"
           default: hour

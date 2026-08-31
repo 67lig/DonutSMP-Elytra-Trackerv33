@@ -14,6 +14,7 @@ export type ElytraCategory = typeof ElytraCategory[keyof typeof ElytraCategory];
 
 export const ElytraCategory = {
   elytra: 'elytra',
+  netherite_block: 'netherite_block',
 } as const;
 
 export type TimeRange = typeof TimeRange[keyof typeof TimeRange];
@@ -130,12 +131,13 @@ export interface MarketAlert {
   detectedAt: string;
 }
 
-export interface AnalyzeElytraListingBody {
+export interface ElytraListingAnalysisInput {
   /** @minLength 1 */
   listingId: string;
 }
 
-export interface AnalyzeElytraMarketBody {
+export interface ElytraMarketAnalysisInput {
+  category?: ElytraCategory;
   range?: TimeRange;
 }
 
@@ -259,6 +261,7 @@ category?: CategoryParameter;
 };
 
 export type GetElytraAlertsParams = {
+category?: CategoryParameter;
 /**
  * @minimum 1
  * @maximum 50

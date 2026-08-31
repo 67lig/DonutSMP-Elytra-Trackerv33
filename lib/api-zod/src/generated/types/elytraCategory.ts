@@ -11,4 +11,5 @@ export type ElytraCategory = typeof ElytraCategory[keyof typeof ElytraCategory];
 
 export const ElytraCategory = {
   elytra: 'elytra',
+  netherite_block: 'netherite_block',
 } as const;
