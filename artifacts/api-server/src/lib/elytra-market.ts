@@ -77,21 +77,22 @@ type FetchListingsResult = {
   listings: NormalizedListing[];
   pagesScanned: number;
   complete: boolean;
+  failedPages: Record<string, string>;
 };
 
 function requestAuctionPage(page: number, apiKey: string): Promise<unknown> {
   const body = JSON.stringify({
     search: "elytra",
-    sort: "lowest_price",
+    sort: "lowest_price, highest_price, recently_listed, last_listed",
   });
 
   return new Promise((resolve, reject) => {
     const request = https.request({
       hostname: "api.donutsmp.net",
       path: `/v1/auction/list/${page}`,
-      method: "POST",
+      method: "GET",
       headers: {
-        Authorization: `Bearer ${apiKey}`,
+        Authorization: apiKey,
         Accept: "application/json",
         "Content-Type": "application/json",
         "Content-Length": Buffer.byteLength(body),
@@ -402,6 +403,7 @@ export class ElytraMarketService {
       listings: [...seen.values()],
       pagesScanned: payloads.size,
       complete: payloads.has(1) && !hasNonTailFailure,
+      failedPages: Object.fromEntries(failedPages),
     };
   }
 
@@ -532,7 +534,7 @@ export class ElytraMarketService {
           logger.warn({
             pagesScanned: result.pagesScanned,
             expectedPages: MAX_AUCTION_PAGES,
-            failedPages: Object.fromEntries(failedPages),
+            failedPages: result.failedPages,
           }, "DonutSMP Elytra market scan incomplete");
         }
       } catch (error) {
