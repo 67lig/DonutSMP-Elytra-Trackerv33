@@ -81,21 +81,25 @@ function playAlertSound() {
   const context = alertAudioContext;
   const play = () => {
     const now = context.currentTime;
-    const chimes = [740, 740, 740];
-    chimes.forEach((frequency, index) => {
-      const start = now + index * 0.2;
+    const chimes = [
+      { frequency: 740, startOffset: 0, duration: 0.17 },
+      { frequency: 740, startOffset: 0.2, duration: 0.17 },
+      { frequency: 740, startOffset: 0.4, duration: 0.17 },
+      { frequency: 1040, startOffset: 0.7, duration: 0.3 },
+    ];
+    chimes.forEach(({ frequency, startOffset, duration }) => {
+      const start = now + startOffset;
       const oscillator = context.createOscillator();
       const gain = context.createGain();
       oscillator.type = 'sine';
       oscillator.frequency.setValueAtTime(frequency, start);
-      oscillator.frequency.exponentialRampToValueAtTime(frequency * 0.92, start + 0.16);
       gain.gain.setValueAtTime(0.0001, start);
       gain.gain.exponentialRampToValueAtTime(0.16, start + 0.015);
-      gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.17);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
       oscillator.connect(gain);
       gain.connect(context.destination);
       oscillator.start(start);
-      oscillator.stop(start + 0.19);
+      oscillator.stop(start + duration + 0.02);
     });
   };
   if (context.state === 'suspended') void context.resume().then(play);
