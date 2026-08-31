@@ -16,5 +16,6 @@ export type ElytraMarketAnalysisResponseMarketContext = {
   /** @nullable */
   priceChange: number | null;
   activeListings: number;
+  activeUnits: number;
   recentPrices: number[];
 };

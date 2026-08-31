@@ -63,33 +63,20 @@ type ApiState = {
   message: string;
 };
 
-const POLL_INTERVAL_MS = 5_000;
 const MAX_AUCTION_PAGES = 20;
+const POLL_INTERVAL_MS = 10_000;
 const ROLLING_REQUEST_LIMIT = 220;
-const BASE_REQUESTS_PER_CYCLE = 1;
-const MAX_REQUESTS_PER_CYCLE = 1;
-const PAGE_ONE_REQUESTS_PER_CYCLE = 1;
-const SECONDARY_REQUESTS_PER_CYCLE = BASE_REQUESTS_PER_CYCLE - PAGE_ONE_REQUESTS_PER_CYCLE;
-const PRIMARY_PAGE_START = 2;
-const PRIMARY_PAGE_COUNT = 0;
-const BASE_EXPLORATORY_REQUESTS_PER_CYCLE = 0;
-const ACTIVE_EXPLORATORY_REQUESTS_PER_CYCLE = MAX_REQUESTS_PER_CYCLE - BASE_REQUESTS_PER_CYCLE;
-const EXPLORATORY_PAGE_START = 12;
-const EXPLORATORY_PAGE_COUNT = Math.max(1, MAX_AUCTION_PAGES - EXPLORATORY_PAGE_START + 1);
-const PAGE_ONE_INTERVAL_MS = 0;
 const REQUEST_WINDOW_MS = 60_000;
 
 type ScheduledRequest = {
   page: number;
-  offsetMs: number;
   sequence: number;
-  exploratory: boolean;
 };
 
 type FetchListingsResult = {
   listings: NormalizedListing[];
-  exploratoryDirectElytras: number;
-  exploratoryRequests: number;
+  pagesScanned: number;
+  complete: boolean;
 };
 
 function requestAuctionPage(page: number, apiKey: string): Promise<unknown> {
@@ -180,13 +167,6 @@ function extractRows(payload: unknown): RawRecord[] {
   return [];
 }
 
-function waitUntil(timestamp: number): Promise<void> {
-  return new Promise((resolve) => {
-    const delay = Math.max(0, timestamp - Date.now());
-    setTimeout(resolve, delay);
-  });
-}
-
 function extractEnchantments(record: RawRecord): string[] {
   const item = asRecord(record.item) ?? asRecord(record.item_data) ?? {};
   const source = nestedValue(record, ["enchantments", "enchants"]) ??
@@ -246,28 +226,11 @@ function formatTimeRemaining(value: unknown): string | null {
   return `${minutes}m`;
 }
 
-function buildPollPlan(exploratoryRequests: number): ScheduledRequest[] {
-  return [
-    ...Array.from({ length: PAGE_ONE_REQUESTS_PER_CYCLE }, (_, index) => ({
-      page: 1,
-      offsetMs: index * PAGE_ONE_INTERVAL_MS,
-      sequence: index,
-      exploratory: false,
-    })),
-    ...Array.from({ length: SECONDARY_REQUESTS_PER_CYCLE }, (_, index) => ({
-      page: PRIMARY_PAGE_START + (index % PRIMARY_PAGE_COUNT),
-      offsetMs: Math.floor((index * POLL_INTERVAL_MS) / SECONDARY_REQUESTS_PER_CYCLE) + 250,
-      sequence: PAGE_ONE_REQUESTS_PER_CYCLE + index,
-      exploratory: false,
-    })),
-    ...Array.from({ length: exploratoryRequests }, (_, index) => ({
-      page: EXPLORATORY_PAGE_START + (index % EXPLORATORY_PAGE_COUNT),
-      offsetMs: Math.floor((index * POLL_INTERVAL_MS) / exploratoryRequests) + 500,
-      sequence: PAGE_ONE_REQUESTS_PER_CYCLE + SECONDARY_REQUESTS_PER_CYCLE + index,
-      exploratory: true,
-    })),
-  ]
-    .sort((a, b) => a.offsetMs - b.offsetMs || a.sequence - b.sequence)
+function buildPollPlan(): ScheduledRequest[] {
+  return Array.from({ length: MAX_AUCTION_PAGES }, (_, index) => ({
+    page: index + 1,
+    sequence: index,
+  }));
 }
 
 function normalizeListing(record: RawRecord, collectedAt: Date): NormalizedListing | null {
@@ -354,11 +317,9 @@ class RollingRequestManager {
 
 export class ElytraMarketService {
   private readonly requestManager = new RollingRequestManager();
-  private activeRequestLimit = BASE_REQUESTS_PER_CYCLE;
   private pollTimer: NodeJS.Timeout | null = null;
   private refreshPromise: Promise<void> | null = null;
   private pollCycle = 0;
-  private exploratoryRequestsPerCycle = 0;
   private state: ApiState = {
     connected: false,
     lastUpdated: null,
@@ -393,15 +354,14 @@ export class ElytraMarketService {
     onPageOneReady?: (listings: NormalizedListing[]) => void,
   ): Promise<FetchListingsResult> {
     const payloads = new Map<number, { sequence: number; payload: unknown }>();
-    const plan = buildPollPlan(0);
+    const failedPages = new Map<number, string>();
+    const plan = buildPollPlan();
     const cycle = this.pollCycle;
     this.pollCycle += 1;
-    const cycleStartedAt = Date.now();
     const collectedAt = new Date();
     let pageOneReported = false;
 
     await Promise.all(plan.map(async (request) => {
-      await waitUntil(cycleStartedAt + request.offsetMs);
       try {
         const payload = await this.fetchPage(
           request.page,
@@ -419,60 +379,29 @@ export class ElytraMarketService {
           onPageOneReady?.(pageOneListings);
         }
       } catch (error) {
+        failedPages.set(request.page, error instanceof Error ? error.message : "Unknown page request error");
         logger.debug({ err: error, page: request.page }, "DonutSMP auction request failed");
       }
     }));
 
-    const lastPrimaryPage = payloads.get(PRIMARY_PAGE_START + PRIMARY_PAGE_COUNT - 1);
-    const primaryPageMayContinue = lastPrimaryPage
-      ? extractRows(lastPrimaryPage.payload)
-        .map((row) => normalizeListing(row, collectedAt))
-        .some((listing) => listing !== null)
-      : false;
-    const exploratoryRequests = this.exploratoryRequestsPerCycle > 0
-      ? this.exploratoryRequestsPerCycle
-      : primaryPageMayContinue
-        ? BASE_EXPLORATORY_REQUESTS_PER_CYCLE
-        : 0;
-    this.activeRequestLimit = BASE_REQUESTS_PER_CYCLE + exploratoryRequests;
-
-    if (exploratoryRequests > 0) {
-      const exploratoryPlan = buildPollPlan(exploratoryRequests)
-        .filter((request) => request.exploratory);
-      await Promise.all(exploratoryPlan.map(async (request) => {
-        await waitUntil(cycleStartedAt + request.offsetMs);
-        try {
-          const payload = await this.fetchPage(
-            request.page,
-            `auction:cycle:${cycle}:${request.sequence}`,
-          );
-          const previous = payloads.get(request.page);
-          if (!previous || request.sequence > previous.sequence) {
-            payloads.set(request.page, { sequence: request.sequence, payload });
-          }
-        } catch (error) {
-          logger.debug({ err: error, page: request.page }, "DonutSMP exploratory auction request failed");
-        }
-      }));
-    }
-
     const seen = new Map<string, NormalizedListing>();
-    let exploratoryDirectElytras = 0;
     for (const [page, { payload }] of payloads.entries()) {
-      const pageListings: NormalizedListing[] = [];
       for (const row of extractRows(payload)) {
         const listing = normalizeListing(row, collectedAt);
         if (listing) {
-          pageListings.push(listing);
           seen.set(listing.id, listing);
         }
       }
-      if (page >= EXPLORATORY_PAGE_START) exploratoryDirectElytras += pageListings.length;
     }
+    const lastSuccessfulPage = Math.max(...payloads.keys(), 0);
+    const hasNonTailFailure = [...failedPages.entries()].some(([page, message]) => {
+      const isOutOfRange = message.includes("HTTP 400") || message.includes("HTTP 404");
+      return page <= lastSuccessfulPage || !isOutOfRange;
+    });
     return {
       listings: [...seen.values()],
-      exploratoryDirectElytras,
-      exploratoryRequests,
+      pagesScanned: payloads.size,
+      complete: payloads.has(1) && !hasNonTailFailure,
     };
   }
 
@@ -579,24 +508,33 @@ export class ElytraMarketService {
               : "Connected to DonutSMP auction feed",
           };
         });
-        await this.recordMarket(result.listings);
-        this.exploratoryRequestsPerCycle = result.exploratoryDirectElytras > 0
-          ? ACTIVE_EXPLORATORY_REQUESTS_PER_CYCLE
-          : 0;
-        this.state = {
-          connected: true,
-          lastUpdated: new Date(),
-          message: result.listings.length ? "Live DonutSMP auction data" : "Connected, but no direct Elytra listings are listed",
-        };
-        logger.info({
-          qualifyingListings: result.listings.length,
-          upstreamRequests: PAGE_ONE_REQUESTS_PER_CYCLE + SECONDARY_REQUESTS_PER_CYCLE + result.exploratoryRequests,
-          pageOneRequests: PAGE_ONE_REQUESTS_PER_CYCLE,
-          secondaryPageRequests: SECONDARY_REQUESTS_PER_CYCLE,
-          exploratoryPageRequests: result.exploratoryRequests,
-          exploratoryDirectElytras: result.exploratoryDirectElytras,
-          nextExploratoryPageRequests: this.exploratoryRequestsPerCycle,
-        }, "DonutSMP Elytra market refreshed");
+        if (result.complete) {
+          await this.recordMarket(result.listings);
+          this.state = {
+            connected: true,
+            lastUpdated: new Date(),
+            message: result.listings.length
+              ? `Live DonutSMP auction data · scanned ${result.pagesScanned} pages`
+              : `Connected, but no direct Elytra listings were found across ${result.pagesScanned} pages`,
+          };
+          logger.info({
+            qualifyingListings: result.listings.length,
+            qualifyingUnits: result.listings.reduce((sum, listing) => sum + listing.quantity, 0),
+            pagesScanned: result.pagesScanned,
+            scanIntervalMs: POLL_INTERVAL_MS,
+          }, "DonutSMP Elytra market full scan refreshed");
+        } else {
+          this.state = {
+            connected: false,
+            lastUpdated: this.state.lastUpdated,
+            message: `Partial Auction House scan (${result.pagesScanned}/${MAX_AUCTION_PAGES} pages); keeping the last complete snapshot`,
+          };
+          logger.warn({
+            pagesScanned: result.pagesScanned,
+            expectedPages: MAX_AUCTION_PAGES,
+            failedPages: Object.fromEntries(failedPages),
+          }, "DonutSMP Elytra market scan incomplete");
+        }
       } catch (error) {
         const message = error instanceof Error ? error.message : "Unknown DonutSMP error";
         this.state = {

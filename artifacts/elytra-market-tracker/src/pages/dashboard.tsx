@@ -259,14 +259,57 @@ function StatCard({ category, stat, selected, onSelect, benchmarkMedian, hasCust
           <Delta value={stat?.priceChange} />
         </div>
          <div className="mt-4 grid grid-cols-2 gap-2 border-t border-[hsl(var(--card-border))] pt-3 text-xs">
-            <div><span className="text-[hsl(var(--muted-foreground))]">low </span><span className="mono">{formatPrice(stat?.lowest, stat?.currency)}</span></div>
-            <div className="text-right"><span className="text-[hsl(var(--muted-foreground))]">active </span><span className="mono text-[hsl(var(--primary))]">{formatNumber(stat?.activeListings)}</span></div>
+             <div><span className="text-[hsl(var(--muted-foreground))]">low </span><span className="mono">{formatPrice(stat?.lowest, stat?.currency)}</span></div>
+             <div className="text-right"><span className="text-[hsl(var(--muted-foreground))]">listings </span><span className="mono text-[hsl(var(--primary))]">{formatNumber(stat?.activeListings)}</span></div>
          </div>
       </button>
       <button type="button" data-testid={`button-edit-median-${category}`} onClick={onEditMedian} className={`absolute right-4 top-4 rounded-md p-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--primary))] ${selected ? 'bg-[hsl(var(--primary)/.14)] text-[hsl(var(--primary))]' : 'bg-[hsl(var(--secondary))] text-[hsl(var(--muted-foreground))]'} hover:bg-[hsl(var(--primary)/.18)] hover:text-[hsl(var(--primary))]`} aria-label={`Set median benchmark for ${categoryName[category]}`} title="Set median benchmark">
         <Layers3 size={15} />
       </button>
     </div>
+  );
+}
+
+type DashboardSnapshot = {
+  qualifyingListings?: number;
+  qualifyingUnits?: number;
+};
+
+function MarketInventoryPanel({ dashboard, loading }: { dashboard?: DashboardSnapshot; loading: boolean }) {
+  const listings = dashboard?.qualifyingListings;
+  const units = dashboard?.qualifyingUnits;
+  const averageUnits = units != null && listings ? units / listings : null;
+  return (
+    <section data-testid="panel-market-inventory" className="panel cyan-rule mt-6 overflow-hidden rounded-xl p-4 sm:p-5">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="mono text-[10px] uppercase tracking-[.2em] text-[hsl(var(--primary))]">live supply</p>
+          <h2 className="display mt-1 text-lg font-bold tracking-tight">Current Elytras on the market</h2>
+          <p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">Full Auction House scan · refreshed every 10 seconds</p>
+        </div>
+        <div className="inline-flex items-center gap-2 self-start rounded-lg bg-[hsl(var(--primary)/.12)] px-3 py-2 text-xs text-[hsl(var(--primary))]">
+          <DatabaseZap size={15} />
+          <span className="mono">{loading ? 'scanning AH' : 'full scan'}</span>
+        </div>
+      </div>
+      <div className="mt-5 grid gap-3 sm:grid-cols-3">
+        <div className="rounded-lg border border-[hsl(var(--primary)/.28)] bg-[hsl(var(--primary)/.08)] p-4 sm:col-span-1">
+          <p className="mono text-[10px] uppercase tracking-wider text-[hsl(var(--muted-foreground))]">Elytras on AH</p>
+          {loading ? <Skeleton className="mt-2 h-10 w-28" /> : <p data-testid="text-active-elytra-units" className="display mt-1 text-4xl font-bold tracking-[-.05em] text-[hsl(var(--primary))]">{formatNumber(units)}</p>}
+          <p className="mt-2 text-[11px] text-[hsl(var(--muted-foreground))]">individual Elytra items currently listed</p>
+        </div>
+        <div className="rounded-lg border border-[hsl(var(--card-border))] bg-[hsl(var(--secondary)/.35)] p-4">
+          <p className="mono text-[10px] uppercase tracking-wider text-[hsl(var(--muted-foreground))]">active listings</p>
+          {loading ? <Skeleton className="mt-2 h-8 w-20" /> : <p data-testid="text-active-elytra-listings" className="display mt-1 text-3xl font-bold">{formatNumber(listings)}</p>}
+          <p className="mt-2 text-[11px] text-[hsl(var(--muted-foreground))]">auction rows across all scanned pages</p>
+        </div>
+        <div className="rounded-lg border border-[hsl(var(--card-border))] bg-[hsl(var(--secondary)/.35)] p-4">
+          <p className="mono text-[10px] uppercase tracking-wider text-[hsl(var(--muted-foreground))]">average per listing</p>
+          {loading ? <Skeleton className="mt-2 h-8 w-20" /> : <p data-testid="text-average-elytras-per-listing" className="display mt-1 text-3xl font-bold">{formatNumber(averageUnits, 1)}</p>}
+          <p className="mt-2 text-[11px] text-[hsl(var(--muted-foreground))]">quantity-weighted supply signal for Gemini</p>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -522,7 +565,7 @@ function PredictionPanel({ range, loading }: { range: Range; loading: boolean })
         <div>
           <p className="mono text-[10px] uppercase tracking-[.2em] text-[hsl(var(--accent))]">AI prediction</p>
           <h2 className="display mt-1 text-lg font-bold tracking-tight">Should you buy or sell?</h2>
-          <p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">Gemini reads auction pages 1 + 2 and the selected price graph</p>
+           <p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">Gemini reads the live supply count, auction pages 1 + 2, and the selected price graph</p>
         </div>
         <span className="rounded-lg bg-[hsl(var(--primary)/.14)] p-2 text-[hsl(var(--primary))]"><Sparkles size={17} /></span>
       </div>
@@ -545,8 +588,9 @@ function PredictionPanel({ range, loading }: { range: Range; loading: boolean })
             </div>
             <p className="mt-4 text-sm leading-6">{analysis.summary}</p>
             <div className="mt-4 grid grid-cols-2 gap-2 border-t border-[hsl(var(--card-border))] pt-4 text-xs">
-              <div><span className="text-[hsl(var(--muted-foreground))]">market low </span><span className="mono">{formatPrice(analysis.marketContext.lowest)}</span></div>
+               <div><span className="text-[hsl(var(--muted-foreground))]">market low </span><span className="mono">{formatPrice(analysis.marketContext.lowest)}</span></div>
               <div className="text-right"><span className="text-[hsl(var(--muted-foreground))]">range </span><span className="mono">{rangeLabel}</span></div>
+               <div><span className="text-[hsl(var(--muted-foreground))]">Elytras on AH </span><span className="mono">{formatNumber(analysis.marketContext.activeUnits)}</span></div>
               {analysis.marketContext.priceChange != null && <div><span className="text-[hsl(var(--muted-foreground))]">graph move </span><span className={analysis.marketContext.priceChange >= 0 ? 'text-[hsl(var(--destructive))]' : 'text-[hsl(var(--chart-3))]'}>{analysis.marketContext.priceChange >= 0 ? '+' : ''}{analysis.marketContext.priceChange.toFixed(1)}%</span></div>}
               <div className="text-right"><span className="text-[hsl(var(--muted-foreground))]">AI uses left </span><span className="mono">{analysis.usage.remaining}/{analysis.usage.limit}</span></div>
             </div>
@@ -756,13 +800,13 @@ export default function Dashboard() {
       <header className="border-b border-[hsl(var(--border))] bg-[hsl(var(--background)/.86)] backdrop-blur-md">
         <div className="mx-auto flex max-w-[1560px] items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
           <div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl border border-[hsl(var(--primary)/.35)] bg-[hsl(var(--primary)/.1)]"><img src="/elytra-logo.png" alt="" className="h-full w-full object-contain" /></div><div><p className="display text-base font-bold tracking-tight">DonutSMP <span className="text-[hsl(var(--primary))]">/ Elytra</span></p><p className="mono text-[9px] uppercase tracking-[.2em] text-[hsl(var(--muted-foreground))]">market instrument panel</p></div></div>
-           <div className="flex items-center gap-2 sm:gap-5"><div className="hidden items-center gap-2 text-right sm:flex"><span className="h-1.5 w-1.5 rounded-full bg-[hsl(var(--chart-3))]" /><span className="mono text-[10px] uppercase tracking-wider text-[hsl(var(--muted-foreground))]">1 upstream call / 5s · lowest-price page</span></div><button type="button" data-testid="button-refresh-all" onClick={refetchAll} className="inline-flex items-center gap-2 rounded-lg border border-[hsl(var(--card-border))] bg-[hsl(var(--secondary)/.6)] px-3 py-2 text-xs font-bold text-[hsl(var(--foreground))] transition-colors hover:border-[hsl(var(--primary)/.55)] hover:text-[hsl(var(--primary))]"><RefreshCw size={14} className={dashboardQuery.isFetching ? 'animate-spin' : ''} /><span className="hidden sm:inline">Refresh</span></button></div>
+            <div className="flex items-center gap-2 sm:gap-5"><div className="hidden items-center gap-2 text-right sm:flex"><span className="h-1.5 w-1.5 rounded-full bg-[hsl(var(--chart-3))]" /><span className="mono text-[10px] uppercase tracking-wider text-[hsl(var(--muted-foreground))]">20-page AH scan / 10s</span></div><button type="button" data-testid="button-refresh-all" onClick={refetchAll} className="inline-flex items-center gap-2 rounded-lg border border-[hsl(var(--card-border))] bg-[hsl(var(--secondary)/.6)] px-3 py-2 text-xs font-bold text-[hsl(var(--foreground))] transition-colors hover:border-[hsl(var(--primary)/.55)] hover:text-[hsl(var(--primary))]"><RefreshCw size={14} className={dashboardQuery.isFetching ? 'animate-spin' : ''} /><span className="hidden sm:inline">Refresh</span></button></div>
         </div>
       </header>
       <div className="mx-auto max-w-[1560px] px-4 pb-10 pt-6 sm:px-6 lg:px-8">
         <div className="fade-up"><ApiBanner api={dashboard?.api} generatedAt={dashboard?.generatedAt} isError={!!dashboardQuery.isError} onRetry={refetchAll} /></div>
-         <div className="fade-up-delay mt-7 flex flex-col justify-between gap-4 md:flex-row md:items-end"><div><p className="mono text-[10px] uppercase tracking-[.24em] text-[hsl(var(--accent))]">live inventory monitor</p><h1 className="display mt-2 text-3xl font-bold tracking-[-.04em] sm:text-4xl">The Elytra market read.</h1><p className="mt-2 max-w-2xl text-sm leading-6 text-[hsl(var(--muted-foreground))]">A clean view of what the market is reporting now. Direct Elytra listings only, with no enchantment filter and no synthetic trend lines.</p></div><div className="flex items-center gap-2 text-xs text-[hsl(var(--muted-foreground))]"><DatabaseZap size={14} className="text-[hsl(var(--primary))]" /><span className="mono">{dashboard ? `${formatNumber(dashboard.qualifyingListings)} active units` : 'awaiting inventory count'}</span></div></div>
-            {dashboardQuery.isLoading ? <div className="mt-6 grid gap-3 md:grid-cols-1"><Skeleton className="h-48 rounded-xl" /></div> : dashboardQuery.isError && !dashboard ? <div data-testid="error-dashboard" className="panel amber-rule mt-6 rounded-xl p-8 text-center"><ServerCrash size={25} className="mx-auto text-[hsl(var(--accent))]" /><h2 className="display mt-3 text-lg font-bold">Market snapshot unavailable</h2><p className="mx-auto mt-2 max-w-md text-sm text-[hsl(var(--muted-foreground))]">The dashboard endpoint is offline. Nothing is being inferred from missing data.</p><button type="button" data-testid="button-retry-dashboard-empty" onClick={refetchAll} className="mt-5 inline-flex items-center gap-2 rounded-lg bg-[hsl(var(--primary))] px-4 py-2 text-xs font-bold text-[hsl(var(--primary-foreground))]"><RefreshCw size={14} /> Retry connection</button></div> : <><div className="fade-up-delay-2 mt-6 grid gap-3">{CATEGORIES.map((item) => <StatCard key={item} category={item} stat={stats.find((stat) => stat.category === item)} benchmarkMedian={customMedian ?? stats.find((stat) => stat.category === item)?.lowest ?? null} hasCustomMedian={customMedian != null} selected={category === item} onSelect={() => setCategory(item)} onEditMedian={() => setMedianEditorOpen(true)} />)}</div><div className="mt-6 grid items-start gap-4 xl:grid-cols-[minmax(0,1.65fr)_minmax(300px,.8fr)]"><HistoryPanel points={history} loading={historyQuery.isLoading} category={category} range={historyRange} onRangeChange={setHistoryRange} median={benchmarkMedian} onSaveMedian={saveMedian} medianEditorOpen={medianEditorOpen} onCloseMedianEditor={() => setMedianEditorOpen(false)} /><div className="grid gap-4"><PredictionPanel range={historyRange} loading={historyQuery.isLoading} /><AlertsPanel alerts={alerts} loading={alertsQuery.isLoading} threshold={alertThreshold} soundEnabled={alertSoundEnabled} onSaveThreshold={saveAlertThreshold} onSoundEnabledChange={updateAlertSoundEnabled} /></div></div><div className="mt-4 grid gap-4 xl:grid-cols-[1.15fr_1fr]"><ListingsPanel listings={listings} loading={listingsQuery.isLoading} category={listingCategory} sort={listingSort} setSort={setListingSort} /><TransactionsPanel transactions={transactions} loading={transactionsQuery.isLoading} category={transactionCategory} /></div></>}
+         <div className="fade-up-delay mt-7 flex flex-col justify-between gap-4 md:flex-row md:items-end"><div><p className="mono text-[10px] uppercase tracking-[.24em] text-[hsl(var(--accent))]">live inventory monitor</p><h1 className="display mt-2 text-3xl font-bold tracking-[-.04em] sm:text-4xl">The Elytra market read.</h1><p className="mt-2 max-w-2xl text-sm leading-6 text-[hsl(var(--muted-foreground))]">A clean view of what the market is reporting now. Direct Elytra listings only, with no enchantment filter and no synthetic trend lines.</p></div><div className="flex items-center gap-2 text-xs text-[hsl(var(--muted-foreground))]"><DatabaseZap size={14} className="text-[hsl(var(--primary))]" /><span className="mono">{dashboard ? `${formatNumber(dashboard.qualifyingUnits)} Elytras on AH` : 'awaiting inventory count'}</span></div></div>
+             {dashboardQuery.isLoading ? <div className="mt-6 grid gap-3 md:grid-cols-1"><Skeleton className="h-48 rounded-xl" /></div> : dashboardQuery.isError && !dashboard ? <div data-testid="error-dashboard" className="panel amber-rule mt-6 rounded-xl p-8 text-center"><ServerCrash size={25} className="mx-auto text-[hsl(var(--accent))]" /><h2 className="display mt-3 text-lg font-bold">Market snapshot unavailable</h2><p className="mx-auto mt-2 max-w-md text-sm text-[hsl(var(--muted-foreground))]">The dashboard endpoint is offline. Nothing is being inferred from missing data.</p><button type="button" data-testid="button-retry-dashboard-empty" onClick={refetchAll} className="mt-5 inline-flex items-center gap-2 rounded-lg bg-[hsl(var(--primary))] px-4 py-2 text-xs font-bold text-[hsl(var(--primary-foreground))]"><RefreshCw size={14} /> Retry connection</button></div> : <><MarketInventoryPanel dashboard={dashboard} loading={dashboardQuery.isFetching && !dashboard} /><div className="fade-up-delay-2 mt-6 grid gap-3">{CATEGORIES.map((item) => <StatCard key={item} category={item} stat={stats.find((stat) => stat.category === item)} benchmarkMedian={customMedian ?? stats.find((stat) => stat.category === item)?.lowest ?? null} hasCustomMedian={customMedian != null} selected={category === item} onSelect={() => setCategory(item)} onEditMedian={() => setMedianEditorOpen(true)} />)}</div><div className="mt-6 grid items-start gap-4 xl:grid-cols-[minmax(0,1.65fr)_minmax(300px,.8fr)]"><HistoryPanel points={history} loading={historyQuery.isLoading} category={category} range={historyRange} onRangeChange={setHistoryRange} median={benchmarkMedian} onSaveMedian={saveMedian} medianEditorOpen={medianEditorOpen} onCloseMedianEditor={() => setMedianEditorOpen(false)} /><div className="grid gap-4"><PredictionPanel range={historyRange} loading={historyQuery.isLoading} /><AlertsPanel alerts={alerts} loading={alertsQuery.isLoading} threshold={alertThreshold} soundEnabled={alertSoundEnabled} onSaveThreshold={saveAlertThreshold} onSoundEnabledChange={updateAlertSoundEnabled} /></div></div><div className="mt-4 grid gap-4 xl:grid-cols-[1.15fr_1fr]"><ListingsPanel listings={listings} loading={listingsQuery.isLoading} category={listingCategory} sort={listingSort} setSort={setListingSort} /><TransactionsPanel transactions={transactions} loading={transactionsQuery.isLoading} category={transactionCategory} /></div></>}
           <footer className="mt-7 flex flex-col gap-2 border-t border-[hsl(var(--border))] pt-4 text-[10px] text-[hsl(var(--muted-foreground))] sm:flex-row sm:items-center sm:justify-between"><span className="inline-flex items-center gap-2"><Check size={13} className="text-[hsl(var(--chart-3))]" /> Live scope locked to DonutSMP Elytra search</span><span className="mono">{dashboard?.generatedAt ? `snapshot generated ${formatTime(dashboard.generatedAt, true)}` : 'snapshot time unavailable'}</span></footer>
       </div>
     </main>

@@ -186,6 +186,7 @@ export const AnalyzeElytraListingResponse = zod.object({
   "average": zod.number().nullable(),
   "priceChange": zod.number().nullable(),
   "activeListings": zod.number(),
+  "activeUnits": zod.number(),
   "recentPrices": zod.array(zod.number())
 }),
   "usage": zod.object({
@@ -223,6 +224,7 @@ export const AnalyzeElytraMarketResponse = zod.object({
   "average": zod.number().nullable(),
   "priceChange": zod.number().nullable(),
   "activeListings": zod.number(),
+  "activeUnits": zod.number(),
   "recentPrices": zod.array(zod.number())
 }),
   "source": zod.object({

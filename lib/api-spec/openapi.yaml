@@ -153,7 +153,7 @@ paths:
       operationId: analyzeElytraMarket
       tags: [elytra]
       summary: Ask Gemini for a market-level buy decision
-      description: Sends DonutSMP auction pages one and two plus the selected stored price history range to Gemini.
+       description: Sends the current Elytra supply total, DonutSMP auction pages one and two, and the selected stored price history range to Gemini.
       requestBody:
         required: false
         content:
