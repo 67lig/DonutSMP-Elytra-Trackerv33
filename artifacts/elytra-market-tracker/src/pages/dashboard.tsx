@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   Activity, ArrowDownRight, ArrowUpRight, Bell, Check,
   ChevronDown, Clock3, DatabaseZap, Info, Layers3, ListFilter,
-  Sparkles, Star, Target,
+  Sparkles, Star, Target, Volume2, VolumeX,
   RefreshCw, Search, ServerCrash, ShieldCheck, TrendingDown,
   Settings2, TrendingUp, Wifi, WifiOff, X,
 } from 'lucide-react';
@@ -39,6 +39,7 @@ type MarketStat = { lowest: number | null; highest: number | null; average: numb
 const SETTINGS_STORAGE_KEYS = {
   median: 'elytra-market-custom-median',
   alertThreshold: 'elytra-market-alert-threshold',
+  alertSound: 'elytra-market-alert-sound',
   favorites: 'elytra-market-favorites',
 } as const;
 
@@ -56,6 +57,45 @@ function writeStoredNumber(key: string, value: number | null) {
   if (typeof window === 'undefined') return;
   if (value == null) window.localStorage.removeItem(key);
   else window.localStorage.setItem(key, String(value));
+}
+
+function readStoredBoolean(key: string, fallback: boolean) {
+  if (typeof window === 'undefined') return fallback;
+  const raw = window.localStorage.getItem(key);
+  if (raw === null) return fallback;
+  return raw === 'true';
+}
+
+function writeStoredBoolean(key: string, value: boolean) {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(key, String(value));
+}
+
+let alertAudioContext: AudioContext | null = null;
+
+function playAlertSound() {
+  if (typeof window === 'undefined') return;
+  const AudioContextConstructor = window.AudioContext;
+  if (!AudioContextConstructor) return;
+  alertAudioContext ??= new AudioContextConstructor();
+  const context = alertAudioContext;
+  const play = () => {
+    const now = context.currentTime;
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    oscillator.type = 'sine';
+    oscillator.frequency.setValueAtTime(740, now);
+    oscillator.frequency.exponentialRampToValueAtTime(1040, now + 0.12);
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(0.16, now + 0.015);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.28);
+    oscillator.connect(gain);
+    gain.connect(context.destination);
+    oscillator.start(now);
+    oscillator.stop(now + 0.3);
+  };
+  if (context.state === 'suspended') void context.resume().then(play);
+  else play();
 }
 
 function readStoredFavorites() {
@@ -618,7 +658,7 @@ function TransactionsPanel({ transactions, loading, category }: { transactions: 
   );
 }
 
-function AlertsPanel({ alerts, loading, threshold, onSaveThreshold }: { alerts: any[]; loading: boolean; threshold: number; onSaveThreshold: (value: number) => void }) {
+function AlertsPanel({ alerts, loading, threshold, soundEnabled, onSaveThreshold, onSoundEnabledChange }: { alerts: any[]; loading: boolean; threshold: number; soundEnabled: boolean; onSaveThreshold: (value: number) => void; onSoundEnabledChange: (enabled: boolean) => void }) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [thresholdInput, setThresholdInput] = useState(String(threshold));
   useEffect(() => {
@@ -635,7 +675,7 @@ function AlertsPanel({ alerts, loading, threshold, onSaveThreshold }: { alerts: 
   return (
     <section className="panel min-w-0 rounded-xl p-4 sm:p-5">
        <SectionHeading eyebrow="market watch" title="Detected alerts" detail={`Buy and sell activity affecting ${threshold}+ units`} action={<div className="flex items-center gap-2"><button type="button" data-testid="button-alert-settings" onClick={() => setSettingsOpen((open) => !open)} className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1.5 text-[10px] font-bold transition-colors ${settingsOpen ? 'border-[hsl(var(--accent)/.5)] bg-[hsl(var(--accent)/.1)] text-[hsl(var(--accent))]' : 'border-[hsl(var(--card-border))] text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]'}`}><Settings2 size={13} /> Settings</button><Bell size={17} className="text-[hsl(var(--accent))]" /></div>} />
-       {settingsOpen && <div data-testid="alert-settings" className="mb-4 rounded-lg border border-[hsl(var(--accent)/.3)] bg-[hsl(var(--accent)/.06)] p-3"><div className="flex items-start justify-between gap-3"><div><p className="text-xs font-bold">Alert sensitivity</p><p className="mt-1 text-[10px] leading-4 text-[hsl(var(--muted-foreground))]">Show alerts when at least this many units are added or removed.</p></div><button type="button" onClick={() => setSettingsOpen(false)} className="text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]" aria-label="Close alert settings"><X size={14} /></button></div><div className="mt-3 flex items-end gap-2"><label className="flex-1"><span className="mono block text-[9px] uppercase tracking-wider text-[hsl(var(--muted-foreground))]">minimum units</span><input data-testid="input-alert-threshold" type="number" min="1" max="100" step="1" value={thresholdInput} onChange={(event) => setThresholdInput(event.target.value)} className="mt-1 w-full rounded-md border border-[hsl(var(--card-border))] bg-[hsl(var(--secondary)/.72)] px-2 py-1.5 text-xs outline-none focus:border-[hsl(var(--accent))]" /></label><button type="button" data-testid="button-save-alert-settings" onClick={saveThreshold} className="inline-flex h-[31px] items-center gap-1.5 rounded-md bg-[hsl(var(--accent))] px-2.5 text-[10px] font-bold text-[hsl(var(--accent-foreground))] hover:opacity-85"><Check size={12} /> Save</button></div></div>}
+       {settingsOpen && <div data-testid="alert-settings" className="mb-4 rounded-lg border border-[hsl(var(--accent)/.3)] bg-[hsl(var(--accent)/.06)] p-3"><div className="flex items-start justify-between gap-3"><div><p className="text-xs font-bold">Alert sensitivity</p><p className="mt-1 text-[10px] leading-4 text-[hsl(var(--muted-foreground))]">Show alerts when at least this many units are added or removed.</p></div><button type="button" onClick={() => setSettingsOpen(false)} className="text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]" aria-label="Close alert settings"><X size={14} /></button></div><div className="mt-3 flex items-end gap-2"><label className="flex-1"><span className="mono block text-[9px] uppercase tracking-wider text-[hsl(var(--muted-foreground))]">minimum units</span><input data-testid="input-alert-threshold" type="number" min="1" max="100" step="1" value={thresholdInput} onChange={(event) => setThresholdInput(event.target.value)} className="mt-1 w-full rounded-md border border-[hsl(var(--card-border))] bg-[hsl(var(--secondary)/.72)] px-2 py-1.5 text-xs outline-none focus:border-[hsl(var(--accent))]" /></label><button type="button" data-testid="button-save-alert-settings" onClick={saveThreshold} className="inline-flex h-[31px] items-center gap-1.5 rounded-md bg-[hsl(var(--accent))] px-2.5 text-[10px] font-bold text-[hsl(var(--accent-foreground))] hover:opacity-85"><Check size={12} /> Save</button></div><div className="mt-3 flex items-center justify-between gap-3 border-t border-[hsl(var(--accent)/.18)] pt-3"><div><p className="text-xs font-bold">Alert sound</p><p className="mt-1 text-[10px] leading-4 text-[hsl(var(--muted-foreground))]">Play a chime when a new alert is detected.</p></div><div className="flex shrink-0 items-center gap-1.5"><button type="button" data-testid="button-test-alert-sound" onClick={() => playAlertSound()} className="rounded-md border border-[hsl(var(--card-border))] px-2 py-1.5 text-[10px] font-bold text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]">Test</button><button type="button" data-testid="button-toggle-alert-sound" aria-pressed={soundEnabled} onClick={() => onSoundEnabledChange(!soundEnabled)} className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1.5 text-[10px] font-bold transition-colors ${soundEnabled ? 'border-[hsl(var(--primary)/.45)] bg-[hsl(var(--primary)/.1)] text-[hsl(var(--primary))]' : 'border-[hsl(var(--card-border))] text-[hsl(var(--muted-foreground))]'}`}>{soundEnabled ? <Volume2 size={13} /> : <VolumeX size={13} />} {soundEnabled ? 'On' : 'Off'}</button></div></div></div>}
       {loading ? <div className="space-y-2"><Skeleton className="h-16 w-full" /><Skeleton className="h-16 w-full" /></div> : valid.length === 0 ? <div data-testid="empty-alerts" className="rounded-lg border border-dashed border-[hsl(var(--card-border))] px-4 py-9 text-center"><ShieldCheck size={20} className="mx-auto text-[hsl(var(--chart-3))]" /><p className="mt-2 text-sm font-semibold">No market alerts</p><p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">No material activity has been detected in the current alert window.</p></div> : <div className="space-y-2">{valid.map((alert) => { const buy = alert.type === 'massive_buy'; return <div data-testid={`row-alert-${alert.id}`} key={alert.id} className={`rounded-lg border p-3 ${buy ? 'border-[hsl(var(--chart-3)/.22)] bg-[hsl(var(--chart-3)/.05)]' : 'border-[hsl(var(--accent)/.22)] bg-[hsl(var(--accent)/.05)]'}`}><div className="flex items-start gap-3"><span className={`mt-0.5 rounded-md p-1.5 ${buy ? 'bg-[hsl(var(--chart-3)/.12)] text-[hsl(var(--chart-3))]' : 'bg-[hsl(var(--accent)/.12)] text-[hsl(var(--accent))]'}`}>{buy ? <ArrowUpRight size={15} /> : <ArrowDownRight size={15} />}</span><div className="min-w-0 flex-1"><div className="flex items-center justify-between gap-2"><p className="text-xs font-bold">{buy ? 'Massive buy' : 'Massive sell'} · {categoryShort[safeCategory(alert.category) || 'elytra']}</p><span className="mono text-[10px] text-[hsl(var(--muted-foreground))]">{formatRelative(alert.detectedAt)}</span></div><p className="mt-1 text-[11px] text-[hsl(var(--muted-foreground))]">{formatNumber(alert.affectedQuantity)} units affected{alert.estimatedValue != null ? ` · estimated ${formatPrice(alert.estimatedValue)}` : ''}</p>{alert.percentageChange != null && <div className="mt-2 flex gap-3 text-[10px]"><span className={buy ? 'text-[hsl(var(--chart-3))]' : 'text-[hsl(var(--accent))]'}>{buy ? 'Demand signal' : 'Supply signal'} {alert.percentageChange > 0 ? '+' : ''}{alert.percentageChange.toFixed(1)}%</span>{alert.previousPrice != null && alert.currentPrice != null && <span className="text-[hsl(var(--muted-foreground))]">{formatPrice(alert.previousPrice)} → {formatPrice(alert.currentPrice)}</span>}</div>}</div></div></div>; })}</div>}
     </section>
   );
@@ -650,6 +690,8 @@ export default function Dashboard() {
   const [medianEditorOpen, setMedianEditorOpen] = useState(false);
   const [customMedian, setCustomMedian] = useState<number | null>(() => readStoredNumber(SETTINGS_STORAGE_KEYS.median, null));
   const [alertThreshold, setAlertThreshold] = useState(() => Math.floor(readStoredNumber(SETTINGS_STORAGE_KEYS.alertThreshold, 10) ?? 10));
+   const [alertSoundEnabled, setAlertSoundEnabled] = useState(() => readStoredBoolean(SETTINGS_STORAGE_KEYS.alertSound, true));
+   const seenAlertIds = useRef<Set<string> | null>(null);
 
    const historyParams = useMemo(() => ({ range: historyRange, category }), [category, historyRange]);
   const listingParams = useMemo(() => ({ sort: listingSort, category: listingCategory }), [listingCategory, listingSort]);
@@ -669,6 +711,19 @@ export default function Dashboard() {
   const listings = useMemo(() => listingsQuery.data || [], [listingsQuery.data]);
   const transactions = useMemo(() => transactionsQuery.data || [], [transactionsQuery.data]);
   const alerts = useMemo(() => alertsQuery.data || [], [alertsQuery.data]);
+   useEffect(() => {
+     if (!alertsQuery.isSuccess) return;
+     const currentAlertIds = alerts
+       .filter((alert) => safeCategory(alert.category) && alert.id != null)
+       .map((alert) => String(alert.id));
+     if (seenAlertIds.current === null) {
+       seenAlertIds.current = new Set(currentAlertIds);
+       return;
+     }
+     const isNewAlert = currentAlertIds.some((id) => !seenAlertIds.current?.has(id));
+     currentAlertIds.forEach((id) => seenAlertIds.current?.add(id));
+     if (isNewAlert && alertSoundEnabled) playAlertSound();
+   }, [alertSoundEnabled, alerts, alertsQuery.isSuccess]);
   const selectedStat = stats.find((stat) => stat.category === category);
   const benchmarkMedian = customMedian ?? selectedStat?.lowest ?? null;
   const saveMedian = (value: number | null) => {
@@ -679,6 +734,10 @@ export default function Dashboard() {
     setAlertThreshold(value);
     writeStoredNumber(SETTINGS_STORAGE_KEYS.alertThreshold, value);
   };
+   const updateAlertSoundEnabled = (enabled: boolean) => {
+     setAlertSoundEnabled(enabled);
+     writeStoredBoolean(SETTINGS_STORAGE_KEYS.alertSound, enabled);
+   };
   const refetchAll = () => { void dashboardQuery.refetch(); void historyQuery.refetch(); void listingsQuery.refetch(); void transactionsQuery.refetch(); void alertsQuery.refetch(); };
 
   return (
@@ -692,7 +751,7 @@ export default function Dashboard() {
       <div className="mx-auto max-w-[1560px] px-4 pb-10 pt-6 sm:px-6 lg:px-8">
         <div className="fade-up"><ApiBanner api={dashboard?.api} generatedAt={dashboard?.generatedAt} isError={!!dashboardQuery.isError} onRetry={refetchAll} /></div>
          <div className="fade-up-delay mt-7 flex flex-col justify-between gap-4 md:flex-row md:items-end"><div><p className="mono text-[10px] uppercase tracking-[.24em] text-[hsl(var(--accent))]">live inventory monitor</p><h1 className="display mt-2 text-3xl font-bold tracking-[-.04em] sm:text-4xl">The Elytra market read.</h1><p className="mt-2 max-w-2xl text-sm leading-6 text-[hsl(var(--muted-foreground))]">A clean view of what the market is reporting now. Direct Elytra listings only, with no enchantment filter and no synthetic trend lines.</p></div><div className="flex items-center gap-2 text-xs text-[hsl(var(--muted-foreground))]"><DatabaseZap size={14} className="text-[hsl(var(--primary))]" /><span className="mono">{dashboard ? `${formatNumber(dashboard.qualifyingListings)} active units` : 'awaiting inventory count'}</span></div></div>
-            {dashboardQuery.isLoading ? <div className="mt-6 grid gap-3 md:grid-cols-1"><Skeleton className="h-48 rounded-xl" /></div> : dashboardQuery.isError && !dashboard ? <div data-testid="error-dashboard" className="panel amber-rule mt-6 rounded-xl p-8 text-center"><ServerCrash size={25} className="mx-auto text-[hsl(var(--accent))]" /><h2 className="display mt-3 text-lg font-bold">Market snapshot unavailable</h2><p className="mx-auto mt-2 max-w-md text-sm text-[hsl(var(--muted-foreground))]">The dashboard endpoint is offline. Nothing is being inferred from missing data.</p><button type="button" data-testid="button-retry-dashboard-empty" onClick={refetchAll} className="mt-5 inline-flex items-center gap-2 rounded-lg bg-[hsl(var(--primary))] px-4 py-2 text-xs font-bold text-[hsl(var(--primary-foreground))]"><RefreshCw size={14} /> Retry connection</button></div> : <><div className="fade-up-delay-2 mt-6 grid gap-3">{CATEGORIES.map((item) => <StatCard key={item} category={item} stat={stats.find((stat) => stat.category === item)} benchmarkMedian={customMedian ?? stats.find((stat) => stat.category === item)?.lowest ?? null} hasCustomMedian={customMedian != null} selected={category === item} onSelect={() => setCategory(item)} onEditMedian={() => setMedianEditorOpen(true)} />)}</div><div className="mt-6 grid items-start gap-4 xl:grid-cols-[minmax(0,1.65fr)_minmax(300px,.8fr)]"><HistoryPanel points={history} loading={historyQuery.isLoading} category={category} range={historyRange} onRangeChange={setHistoryRange} median={benchmarkMedian} onSaveMedian={saveMedian} medianEditorOpen={medianEditorOpen} onCloseMedianEditor={() => setMedianEditorOpen(false)} /><div className="grid gap-4"><PredictionPanel range={historyRange} loading={historyQuery.isLoading} /><AlertsPanel alerts={alerts} loading={alertsQuery.isLoading} threshold={alertThreshold} onSaveThreshold={saveAlertThreshold} /></div></div><div className="mt-4 grid gap-4 xl:grid-cols-[1.15fr_1fr]"><ListingsPanel listings={listings} loading={listingsQuery.isLoading} category={listingCategory} sort={listingSort} setSort={setListingSort} /><TransactionsPanel transactions={transactions} loading={transactionsQuery.isLoading} category={transactionCategory} /></div></>}
+            {dashboardQuery.isLoading ? <div className="mt-6 grid gap-3 md:grid-cols-1"><Skeleton className="h-48 rounded-xl" /></div> : dashboardQuery.isError && !dashboard ? <div data-testid="error-dashboard" className="panel amber-rule mt-6 rounded-xl p-8 text-center"><ServerCrash size={25} className="mx-auto text-[hsl(var(--accent))]" /><h2 className="display mt-3 text-lg font-bold">Market snapshot unavailable</h2><p className="mx-auto mt-2 max-w-md text-sm text-[hsl(var(--muted-foreground))]">The dashboard endpoint is offline. Nothing is being inferred from missing data.</p><button type="button" data-testid="button-retry-dashboard-empty" onClick={refetchAll} className="mt-5 inline-flex items-center gap-2 rounded-lg bg-[hsl(var(--primary))] px-4 py-2 text-xs font-bold text-[hsl(var(--primary-foreground))]"><RefreshCw size={14} /> Retry connection</button></div> : <><div className="fade-up-delay-2 mt-6 grid gap-3">{CATEGORIES.map((item) => <StatCard key={item} category={item} stat={stats.find((stat) => stat.category === item)} benchmarkMedian={customMedian ?? stats.find((stat) => stat.category === item)?.lowest ?? null} hasCustomMedian={customMedian != null} selected={category === item} onSelect={() => setCategory(item)} onEditMedian={() => setMedianEditorOpen(true)} />)}</div><div className="mt-6 grid items-start gap-4 xl:grid-cols-[minmax(0,1.65fr)_minmax(300px,.8fr)]"><HistoryPanel points={history} loading={historyQuery.isLoading} category={category} range={historyRange} onRangeChange={setHistoryRange} median={benchmarkMedian} onSaveMedian={saveMedian} medianEditorOpen={medianEditorOpen} onCloseMedianEditor={() => setMedianEditorOpen(false)} /><div className="grid gap-4"><PredictionPanel range={historyRange} loading={historyQuery.isLoading} /><AlertsPanel alerts={alerts} loading={alertsQuery.isLoading} threshold={alertThreshold} soundEnabled={alertSoundEnabled} onSaveThreshold={saveAlertThreshold} onSoundEnabledChange={updateAlertSoundEnabled} /></div></div><div className="mt-4 grid gap-4 xl:grid-cols-[1.15fr_1fr]"><ListingsPanel listings={listings} loading={listingsQuery.isLoading} category={listingCategory} sort={listingSort} setSort={setListingSort} /><TransactionsPanel transactions={transactions} loading={transactionsQuery.isLoading} category={transactionCategory} /></div></>}
           <footer className="mt-7 flex flex-col gap-2 border-t border-[hsl(var(--border))] pt-4 text-[10px] text-[hsl(var(--muted-foreground))] sm:flex-row sm:items-center sm:justify-between"><span className="inline-flex items-center gap-2"><Check size={13} className="text-[hsl(var(--chart-3))]" /> Live scope locked to DonutSMP Elytra search</span><span className="mono">{dashboard?.generatedAt ? `snapshot generated ${formatTime(dashboard.generatedAt, true)}` : 'snapshot time unavailable'}</span></footer>
       </div>
     </main>
