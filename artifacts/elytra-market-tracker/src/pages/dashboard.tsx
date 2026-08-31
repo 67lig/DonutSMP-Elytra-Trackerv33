@@ -228,7 +228,7 @@ function ApiBanner({ api, generatedAt, isError, onRetry }: { api?: { connected: 
           <p className="mono text-[10px] uppercase tracking-wider text-[hsl(var(--muted-foreground))]">last packet</p>
           <p className="mono mt-0.5 text-xs text-[hsl(var(--foreground))]">{formatRelative(api?.lastUpdated || generatedAt)}</p>
         </div>
-        {api && <div className="hidden text-right sm:block"><p className="mono text-[10px] uppercase tracking-wider text-[hsl(var(--muted-foreground))]">request window</p><p className="mono mt-0.5 text-xs text-[hsl(var(--foreground))]">{api.requestsInWindow} / {api.requestLimit}</p></div>}
+         {api && <div className="hidden text-right sm:block"><p className="mono text-[10px] uppercase tracking-wider text-[hsl(var(--muted-foreground))]">requests / last 60s</p><p className="mono mt-0.5 text-xs text-[hsl(var(--foreground))]">{api.requestsInWindow} / {api.requestLimit}</p></div>}
         {isError && <button type="button" data-testid="button-retry-dashboard" onClick={onRetry} className="rounded-lg border border-[hsl(var(--card-border))] p-2 text-[hsl(var(--primary))] transition-colors hover:bg-[hsl(var(--secondary))]" aria-label="Retry market feed"><RefreshCw size={15} /></button>}
       </div>
     </div>
