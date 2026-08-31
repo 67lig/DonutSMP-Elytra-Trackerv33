@@ -234,27 +234,20 @@ function formatChartAxisTime(timestamp: string, range: Range) {
   return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(date);
 }
 
-function buildSmoothPath(points: Array<{ x: number; y: number }>) {
+function buildSteppedPath(points: Array<{ x: number; y: number }>) {
   if (!points.length) return '';
   if (points.length === 1) return `M ${points[0].x} ${points[0].y}`;
   let path = `M ${points[0].x} ${points[0].y}`;
   for (let index = 0; index < points.length - 1; index += 1) {
-    const previous = points[index - 1] ?? points[index];
     const current = points[index];
     const next = points[index + 1];
-    const afterNext = points[index + 2] ?? next;
-    const controlOne = {
-      x: current.x + (next.x - previous.x) / 6,
-      y: current.y + (next.y - previous.y) / 6,
-    };
-    const controlTwo = {
-      x: next.x - (afterNext.x - current.x) / 6,
-      y: next.y - (afterNext.y - current.y) / 6,
-    };
-    path += ` C ${controlOne.x} ${controlOne.y}, ${controlTwo.x} ${controlTwo.y}, ${next.x} ${next.y}`;
+    path += ` L ${next.x} ${current.y} L ${next.x} ${next.y}`;
   }
   return path;
 }
+
+type ChartTransform = { scale: number; translateX: number; translateY: number };
+const DEFAULT_CHART_TRANSFORM: ChartTransform = { scale: 1, translateX: 0, translateY: 0 };
 
 function HistoryPanel({ points, loading, category, range, onRangeChange, median, onSaveMedian, medianEditorOpen, onCloseMedianEditor }: { points: ChartPoint[]; loading: boolean; category: Category; range: Range; onRangeChange: (range: Range) => void; median: number | null; onSaveMedian: (value: number | null) => void; medianEditorOpen: boolean; onCloseMedianEditor: () => void }) {
   const chartPoints = points.filter((point) => isCategory(point.category) && point.category === category);
@@ -262,9 +255,13 @@ function HistoryPanel({ points, loading, category, range, onRangeChange, median,
     ? chartPoints.filter((_, index) => index % Math.ceil(chartPoints.length / 240) === 0 || index === chartPoints.length - 1)
     : chartPoints;
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+  const [chartTransform, setChartTransform] = useState<ChartTransform>(DEFAULT_CHART_TRANSFORM);
   const [medianInput, setMedianInput] = useState(median == null ? '' : String(median));
   const [medianInputDirty, setMedianInputDirty] = useState(false);
   const medianInputRef = useRef<HTMLInputElement>(null);
+  const chartRef = useRef<SVGSVGElement>(null);
+  const pointersRef = useRef(new Map<number, { x: number; y: number }>());
+  const pinchStartRef = useRef<{ distance: number; midpoint: { x: number; y: number }; transform: ChartTransform } | null>(null);
   useEffect(() => {
     if (!medianInputDirty) setMedianInput(median == null ? '' : String(median));
   }, [median, medianInputDirty]);
@@ -301,25 +298,88 @@ function HistoryPanel({ points, loading, category, range, onRangeChange, median,
     x: renderPoints.length === 1 ? plotLeft + plotWidth / 2 : plotLeft + (index / (renderPoints.length - 1)) * plotWidth,
     y: priceToY(point.close),
   }));
-  const linePath = buildSmoothPath(linePoints);
+  const linePath = buildSteppedPath(linePoints);
   const areaPath = linePath ? `${linePath} L ${linePoints[linePoints.length - 1].x} ${plotBottom} L ${linePoints[0].x} ${plotBottom} Z` : '';
   const hoveredPoint = hoveredIndex == null ? null : renderPoints[hoveredIndex];
-  const hoveredRatio = hoveredIndex == null ? 0.5 : hoveredIndex / Math.max(renderPoints.length - 1, 1);
+  const transformPoint = (point: { x: number; y: number }) => ({
+    x: chartTransform.translateX + point.x * chartTransform.scale,
+    y: chartTransform.translateY + point.y * chartTransform.scale,
+  });
+  const hoveredLinePoint = hoveredIndex == null ? null : transformPoint(linePoints[hoveredIndex]);
+  const hoveredRatio = hoveredLinePoint == null
+    ? 0.5
+    : Math.min(1, Math.max(0, (hoveredLinePoint.x - plotLeft) / plotWidth));
   const tooltipAtStart = hoveredRatio < 0.18;
   const tooltipAtEnd = hoveredRatio > 0.82;
   const tooltipPositionClass = tooltipAtStart ? 'left-0' : tooltipAtEnd ? 'right-0' : 'left-1/2 -translate-x-1/2';
   const tooltipPositionStyle = tooltipAtStart || tooltipAtEnd ? undefined : { left: `${hoveredRatio * 100}%` };
   const yLabels = Array.from({ length: 5 }, (_, index) => chartMax - (chartRange * index) / 4);
+  const chartIsZoomed = chartTransform.scale > 1.01 || Math.abs(chartTransform.translateX) > 1 || Math.abs(chartTransform.translateY) > 1;
+  const toSvgPoint = (event: React.PointerEvent<SVGSVGElement> | React.WheelEvent<SVGSVGElement>) => {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    return {
+      x: ((event.clientX - bounds.left) / bounds.width) * 1000,
+      y: ((event.clientY - bounds.top) / bounds.height) * 340,
+    };
+  };
+  const handlePointerDown = (event: React.PointerEvent<SVGSVGElement>) => {
+    event.currentTarget.setPointerCapture(event.pointerId);
+    pointersRef.current.set(event.pointerId, toSvgPoint(event));
+    if (pointersRef.current.size === 2) {
+      const [first, second] = [...pointersRef.current.values()];
+      pinchStartRef.current = {
+        distance: Math.hypot(second.x - first.x, second.y - first.y),
+        midpoint: { x: (first.x + second.x) / 2, y: (first.y + second.y) / 2 },
+        transform: chartTransform,
+      };
+      setHoveredIndex(null);
+    }
+  };
+  const handlePointerMove = (event: React.PointerEvent<SVGSVGElement>) => {
+    if (!pointersRef.current.has(event.pointerId)) return;
+    pointersRef.current.set(event.pointerId, toSvgPoint(event));
+    if (pointersRef.current.size < 2 || !pinchStartRef.current) return;
+    const [first, second] = [...pointersRef.current.values()];
+    const distance = Math.max(1, Math.hypot(second.x - first.x, second.y - first.y));
+    const midpoint = { x: (first.x + second.x) / 2, y: (first.y + second.y) / 2 };
+    const pinchStart = pinchStartRef.current;
+    const scale = Math.min(5, Math.max(1, pinchStart.transform.scale * (distance / pinchStart.distance)));
+    const anchorX = (pinchStart.midpoint.x - pinchStart.transform.translateX) / pinchStart.transform.scale;
+    const anchorY = (pinchStart.midpoint.y - pinchStart.transform.translateY) / pinchStart.transform.scale;
+    setChartTransform({
+      scale,
+      translateX: midpoint.x - anchorX * scale,
+      translateY: midpoint.y - anchorY * scale,
+    });
+  };
+  const handlePointerEnd = (event: React.PointerEvent<SVGSVGElement>) => {
+    pointersRef.current.delete(event.pointerId);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    if (pointersRef.current.size < 2) pinchStartRef.current = null;
+  };
+  const handleWheel = (event: React.WheelEvent<SVGSVGElement>) => {
+    if (!event.ctrlKey) return;
+    event.preventDefault();
+    const anchor = toSvgPoint(event);
+    const scale = Math.min(5, Math.max(1, chartTransform.scale * Math.exp(-event.deltaY * 0.01)));
+    const contentX = (anchor.x - chartTransform.translateX) / chartTransform.scale;
+    const contentY = (anchor.y - chartTransform.translateY) / chartTransform.scale;
+    setChartTransform({
+      scale,
+      translateX: anchor.x - contentX * scale,
+      translateY: anchor.y - contentY * scale,
+    });
+  };
   return (
     <section className="panel relative min-w-0 overflow-hidden rounded-xl">
       <div className="flex flex-col gap-4 border-b border-[hsl(var(--card-border))] p-4 sm:flex-row sm:items-start sm:justify-between sm:p-5">
         <div>
           <p className="mono text-[10px] uppercase tracking-[.2em] text-[hsl(var(--accent))]">auction house price</p>
           <h2 className="display mt-1 text-lg font-bold tracking-tight">Observed Elytra price</h2>
-          <p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">Showing item value trends for the selected range</p>
+           <p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">Showing stepped item value trends · pinch to zoom</p>
         </div>
         <div className="flex max-w-full gap-1 overflow-x-auto rounded-lg border border-[hsl(var(--card-border))] bg-[hsl(var(--secondary)/.5)] p-1" role="tablist" aria-label="Price history range">
-          {HISTORY_RANGES.map((option) => <button key={option.value} type="button" role="tab" aria-selected={range === option.value} data-testid={`button-history-range-${option.value}`} onClick={() => { setHoveredIndex(null); onRangeChange(option.value); }} className={`shrink-0 rounded-md px-2.5 py-1.5 text-[10px] font-semibold transition-colors sm:px-3 ${range === option.value ? 'bg-[hsl(var(--card))] text-[hsl(var(--foreground))] shadow-sm' : 'text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]'}`}>{option.label}</button>)}
+           {HISTORY_RANGES.map((option) => <button key={option.value} type="button" role="tab" aria-selected={range === option.value} data-testid={`button-history-range-${option.value}`} onClick={() => { setHoveredIndex(null); setChartTransform(DEFAULT_CHART_TRANSFORM); onRangeChange(option.value); }} className={`shrink-0 rounded-md px-2.5 py-1.5 text-[10px] font-semibold transition-colors sm:px-3 ${range === option.value ? 'bg-[hsl(var(--card))] text-[hsl(var(--foreground))] shadow-sm' : 'text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]'}`}>{option.label}</button>)}
         </div>
       </div>
       {medianEditorOpen && <div className="absolute right-2 top-2 z-40 flex items-end gap-2 bg-[#12161d] p-2">
@@ -333,33 +393,39 @@ function HistoryPanel({ points, loading, category, range, onRangeChange, median,
       {loading ? <div className="h-[340px] w-full bg-[#12161d]" /> : renderPoints.length < 1 ? (
         <div data-testid="empty-history" className="flex h-[280px] items-center justify-center bg-[#12161d] text-center text-xs text-[hsl(var(--muted-foreground))]">No price observations</div>
       ) : (
-        <div className="relative h-[340px] w-full overflow-hidden bg-[#12161d]">
+         <div className="relative h-[340px] w-full overflow-hidden bg-[#12161d]">
           {hoveredPoint && <div className={`pointer-events-none absolute top-0 z-30 w-48 bg-[#242b36] px-3 py-2 ${tooltipPositionClass}`} style={tooltipPositionStyle}>
             <p className="mono text-[9px] text-[hsl(var(--muted-foreground))]">{formatTime(hoveredPoint.timestamp, true)}</p>
             <p className="mt-1 text-lg font-bold text-[hsl(var(--foreground))]">{formatChartValue(hoveredPoint.close)} coins</p>
             <p className="mt-1 mono text-[9px] text-[hsl(var(--muted-foreground))]">{formatChartValue(hoveredPoint.observationCount)} observations · low {formatChartValue(hoveredPoint.low)}</p>
           </div>}
-          <svg viewBox="0 0 1000 340" className="block h-full w-full text-[hsl(var(--muted-foreground))]" role="img" aria-label={`Elytra price line chart for ${HISTORY_RANGES.find((option) => option.value === range)?.label}`}>
+           {chartIsZoomed && <button type="button" data-testid="button-reset-chart-zoom" onPointerDown={(event) => event.stopPropagation()} onClick={() => setChartTransform(DEFAULT_CHART_TRANSFORM)} className="absolute right-3 top-3 z-20 inline-flex items-center gap-1 rounded-md border border-[hsl(var(--card-border))] bg-[#1c232d]/90 px-2 py-1.5 text-[10px] font-semibold text-[hsl(var(--foreground))] shadow-lg backdrop-blur-sm hover:border-[hsl(var(--primary)/.65)]" aria-label="Reset chart zoom"><RefreshCw size={11} /> Reset</button>}
+           <svg ref={chartRef} viewBox="0 0 1000 340" className="block h-full w-full touch-none select-none text-[hsl(var(--muted-foreground))]" role="img" aria-label={`Stepped Elytra price chart for ${HISTORY_RANGES.find((option) => option.value === range)?.label}`} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerEnd} onPointerCancel={handlePointerEnd} onWheel={handleWheel}>
             <defs>
               <linearGradient id="history-area-fill" x1="0" x2="0" y1="0" y2="1">
                 <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity=".18" />
                 <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity="0" />
               </linearGradient>
+               <clipPath id="history-plot-clip">
+                 <rect x={plotLeft} y={plotTop} width={plotWidth} height={plotHeight} />
+               </clipPath>
             </defs>
             {yLabels.map((value, index) => {
               const ratio = index / (yLabels.length - 1);
               const y = plotTop + ratio * plotHeight;
               return <g key={`${value}-${index}`}><line x1={plotLeft} x2={plotRight} y1={y} y2={y} stroke="currentColor" strokeDasharray="2 6" strokeOpacity=".22" /><text x="944" y={y + 3} fill="currentColor" fillOpacity=".7" fontFamily="var(--app-font-mono)" fontSize="10">{formatChartValue(value)}</text></g>;
             })}
-            <path d={areaPath} fill="url(#history-area-fill)" />
-            <path d={linePath} fill="none" stroke="hsl(var(--foreground))" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" />
-            {renderPoints.map((point, index) => {
-              const linePoint = linePoints[index];
-              return <g key={`${point.timestamp}-${index}`} onPointerEnter={() => setHoveredIndex(index)} onPointerLeave={() => setHoveredIndex(null)} onFocus={() => setHoveredIndex(index)} onBlur={() => setHoveredIndex(null)}>
-                <rect x={linePoint.x - Math.max(plotWidth / renderPoints.length / 2, 7)} y={plotTop} width={Math.max(plotWidth / renderPoints.length, 14)} height={plotHeight} fill="transparent" tabIndex={0} role="button" aria-label={`${formatTime(point.timestamp, true)} at ${formatChartValue(point.close)}`} />
-                {hoveredIndex === index && <><line x1={linePoint.x} x2={linePoint.x} y1={plotTop} y2={plotBottom} stroke="currentColor" strokeDasharray="2 5" strokeOpacity=".45" /><circle cx={linePoint.x} cy={linePoint.y} r="5" fill="hsl(var(--primary))" stroke="hsl(var(--foreground))" strokeWidth="2" /></>}
-              </g>;
-            })}
+             <g clipPath="url(#history-plot-clip)" transform={`translate(${chartTransform.translateX} ${chartTransform.translateY}) scale(${chartTransform.scale})`}>
+               <path d={areaPath} fill="url(#history-area-fill)" />
+               <path d={linePath} fill="none" stroke="hsl(var(--foreground))" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" vectorEffect="non-scaling-stroke" />
+               {renderPoints.map((point, index) => {
+                 const linePoint = linePoints[index];
+                 return <g key={`${point.timestamp}-${index}`} onPointerEnter={() => setHoveredIndex(index)} onPointerLeave={() => setHoveredIndex(null)} onFocus={() => setHoveredIndex(index)} onBlur={() => setHoveredIndex(null)}>
+                   <rect x={linePoint.x - Math.max(plotWidth / renderPoints.length / 2, 7)} y={plotTop} width={Math.max(plotWidth / renderPoints.length, 14)} height={plotHeight} fill="transparent" tabIndex={0} role="button" aria-label={`${formatTime(point.timestamp, true)} at ${formatChartValue(point.close)}`} />
+                   {hoveredIndex === index && <><line x1={linePoint.x} x2={linePoint.x} y1={plotTop} y2={plotBottom} stroke="currentColor" strokeDasharray="2 5" strokeOpacity=".45" /><circle cx={linePoint.x} cy={linePoint.y} r="5" fill="hsl(var(--primary))" stroke="hsl(var(--foreground))" strokeWidth="2" /></>}
+                 </g>;
+               })}
+             </g>
             {[renderPoints[0], renderPoints[Math.floor((renderPoints.length - 1) / 2)], renderPoints[renderPoints.length - 1]].map((point, index) => {
               const x = index === 0 ? plotLeft : index === 1 ? plotLeft + plotWidth / 2 : plotRight;
               return <text key={`${point.timestamp}-${index}`} x={x} y="320" textAnchor={index === 0 ? 'start' : index === 2 ? 'end' : 'middle'} fill="currentColor" fillOpacity=".7" fontFamily="var(--app-font-mono)" fontSize="10">{formatChartAxisTime(point.timestamp, range)}</text>;
