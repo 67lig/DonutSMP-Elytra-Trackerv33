@@ -35,7 +35,7 @@ const HISTORY_RANGES = [
 type Range = typeof HISTORY_RANGES[number]['value'];
 type ListingSort = 'lowest' | 'highest' | 'recent';
 type ChartPoint = { timestamp: string; price: number; open: number; high: number; low: number; close: number; priceChange: number | null; sampleSize: number; observationCount: number; category: string };
-type MarketStat = { lowest: number | null; highest: number | null; average: number | null; median: number | null; activeListings: number; priceChange: number | null; currency: string };
+type MarketStat = { lowest: number | null; highest: number | null; average: number | null; median: number | null; activeListings: number; activeUnits: number; priceChange: number | null; currency: string };
 const SETTINGS_STORAGE_KEYS = {
   median: 'elytra-market-custom-median',
   alertThreshold: 'elytra-market-alert-threshold',
@@ -494,7 +494,7 @@ type MarketAnalysis = {
   summary: string;
   reasons: string[];
   risks: string[];
-  marketContext: { lowest: number | null; median: number | null; average: number | null; priceChange: number | null; activeListings: number; recentPrices: number[] };
+  marketContext: { lowest: number | null; median: number | null; average: number | null; priceChange: number | null; activeListings: number; activeUnits: number; recentPrices: number[] };
   source: { auctionPages: number[]; historyRange: Range };
   usage: { used: number; remaining: number; limit: number };
 };
@@ -571,7 +571,7 @@ type GeminiAnalysis = {
   summary: string;
   reasons: string[];
   risks: string[];
-  marketContext: { lowest: number | null; median: number | null; average: number | null; priceChange: number | null; activeListings: number; recentPrices: number[] };
+  marketContext: { lowest: number | null; median: number | null; average: number | null; priceChange: number | null; activeListings: number; activeUnits: number; recentPrices: number[] };
   usage: { used: number; remaining: number; limit: number };
 };
 

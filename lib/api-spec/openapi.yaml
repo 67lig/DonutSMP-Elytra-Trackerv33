@@ -410,11 +410,13 @@ components:
               type: ["number", "null"]
             activeListings:
               type: number
+            activeUnits:
+              type: number
             recentPrices:
               type: array
               items:
                 type: number
-          required: [lowest, median, average, priceChange, activeListings, recentPrices]
+          required: [lowest, median, average, priceChange, activeListings, activeUnits, recentPrices]
         usage:
           type: object
           properties:
@@ -459,11 +461,13 @@ components:
               type: ["number", "null"]
             activeListings:
               type: number
+            activeUnits:
+              type: number
             recentPrices:
               type: array
               items:
                 type: number
-          required: [lowest, median, average, priceChange, activeListings, recentPrices]
+          required: [lowest, median, average, priceChange, activeListings, activeUnits, recentPrices]
         source:
           type: object
           properties:

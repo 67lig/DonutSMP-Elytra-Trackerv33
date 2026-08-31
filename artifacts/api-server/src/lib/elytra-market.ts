@@ -42,6 +42,7 @@ export type MarketAnalysisContext = {
     average: number | null;
     priceChange: number | null;
     activeListings: number;
+    activeUnits: number;
     recentPrices: number[];
   };
 };
@@ -765,6 +766,7 @@ export class ElytraMarketService {
         average,
         priceChange: latestObservation[0]?.priceChange ?? null,
         activeListings: prices.length,
+        activeUnits: allListings.reduce((sum, row) => sum + row.quantity, 0),
         recentPrices: observations.reverse().map((row) => row.price),
       },
     };
@@ -786,6 +788,7 @@ export class ElytraMarketService {
       ? prices[Math.floor(prices.length / 2)]
       : prices.length ? (prices[prices.length / 2 - 1] + prices[prices.length / 2]) / 2 : null;
     const average = prices.length ? prices.reduce((sum, price) => sum + price, 0) / prices.length : null;
+    const activeUnits = currentListings.reduce((sum, listing) => sum + listing.quantity, 0);
     return {
       pageOneListings: normalizePage(pageOnePayload),
       pageTwoListings: normalizePage(pageTwoPayload),
@@ -797,6 +800,7 @@ export class ElytraMarketService {
         average,
         priceChange: selectedHistory.at(-1)?.priceChange ?? null,
         activeListings: prices.length,
+        activeUnits,
         recentPrices: selectedHistory.map((point) => point.close),
       },
     };

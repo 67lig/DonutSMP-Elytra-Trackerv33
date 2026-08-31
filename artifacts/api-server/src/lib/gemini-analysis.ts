@@ -16,6 +16,7 @@ export type ListingAnalysisContext = {
     average: number | null;
     priceChange: number | null;
     activeListings: number;
+    activeUnits: number;
     recentPrices: number[];
   };
 };
