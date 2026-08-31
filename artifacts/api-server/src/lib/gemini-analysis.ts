@@ -1,8 +1,8 @@
 import type { ElytraListing } from "@workspace/api-zod";
 import type { MarketAnalysisContext } from "./elytra-market";
 
-const GEMINI_MODEL = "google/gemini-3.5-flash-lite";
-const OPENROUTER_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
+const GEMINI_MODEL = "gemini-flash-latest";
+const GEMINI_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 export const GEMINI_ANALYSIS_LIMIT = 5;
 const GEMINI_ANALYSIS_WINDOW_MS = 60 * 60 * 1_000;
 
@@ -87,8 +87,8 @@ function parseModelJson(text: string): {
 }
 
 async function requestGeminiAnalysis(prompt: string) {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) throw new Error("OPENAI_API_KEY is not configured");
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error("GEMINI_API_KEY is not configured");
   const reservation = reserveGeminiAnalysis();
   if (reservation === null) {
     const error = new Error("Gemini analysis limit reached");
@@ -97,20 +97,23 @@ async function requestGeminiAnalysis(prompt: string) {
   }
 
   try {
-    const response = await fetch(OPENROUTER_ENDPOINT, {
+    const response = await fetch(GEMINI_ENDPOINT, {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${apiKey}`,
+        "x-goog-api-key": apiKey,
         "Content-Type": "application/json",
-        "HTTP-Referer": "https://replit.com",
-        "X-Title": "DonutSMP Elytra Market Tracker",
       },
       body: JSON.stringify({
-        model: GEMINI_MODEL,
-        messages: [{ role: "user", content: prompt }],
-        max_tokens: 8192,
-        temperature: 0.2,
-        response_format: { type: "json_object" },
+        contents: [
+          {
+            parts: [{ text: prompt }],
+          },
+        ],
+        generationConfig: {
+          maxOutputTokens: 8192,
+          temperature: 0.2,
+          responseMimeType: "application/json",
+        },
       }),
     });
 
@@ -122,25 +125,25 @@ async function requestGeminiAnalysis(prompt: string) {
         };
         providerMessage = errorPayload.error?.message?.trim() ?? "";
       } catch {
-        // Keep the status-based error when OpenRouter does not return JSON.
+        // Keep the status-based error when Gemini does not return JSON.
       }
-      const error = new Error(providerMessage || `OpenRouter returned HTTP ${response.status}`);
-      if (response.status === 402) error.name = "OpenRouterCreditsError";
-      if (response.status === 401) error.name = "OpenRouterAuthenticationError";
+      const error = new Error(providerMessage || `Gemini returned HTTP ${response.status}`);
+      if (response.status === 401 || response.status === 403) error.name = "GeminiAuthenticationError";
+      if (response.status === 429) error.name = "GeminiRateLimitError";
       throw error;
     }
     const payload = await response.json() as {
-      choices?: Array<{
-        message?: {
-          content?: string | Array<{ type?: string; text?: string }>;
+      candidates?: Array<{
+        content?: {
+          parts?: Array<{ text?: string }>;
         };
       }>;
     };
-    const content = payload.choices?.[0]?.message?.content;
-    const text = Array.isArray(content)
-      ? content.map((part) => part.text ?? "").join("").trim()
-      : content?.trim();
-    if (!text) throw new Error("OpenRouter returned no analysis");
+    const text = payload.candidates?.[0]?.content?.parts
+      ?.map((part) => part.text ?? "")
+      .join("")
+      .trim();
+    if (!text) throw new Error("Gemini returned no analysis");
     return text;
   } catch (error) {
     releaseGeminiAnalysis(reservation);

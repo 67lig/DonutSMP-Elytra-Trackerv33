@@ -29,6 +29,7 @@ export const GetElytraDashboardResponse = zod.object({
   "average": zod.number().nullable(),
   "median": zod.number().nullable(),
   "activeListings": zod.number(),
+  "activeUnits": zod.number(),
   "priceChange": zod.number().nullable(),
   "currency": zod.string()
 })),
@@ -40,6 +41,7 @@ export const GetElytraDashboardResponse = zod.object({
   "message": zod.string()
 }),
   "qualifyingListings": zod.number(),
+  "qualifyingUnits": zod.number(),
   "generatedAt": zod.coerce.date()
 })
 

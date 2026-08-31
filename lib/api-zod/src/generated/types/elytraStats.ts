@@ -18,6 +18,7 @@ export interface ElytraStats {
   /** @nullable */
   median: number | null;
   activeListings: number;
+  activeUnits: number;
   /** @nullable */
   priceChange: number | null;
   currency: string;

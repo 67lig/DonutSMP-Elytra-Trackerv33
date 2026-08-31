@@ -12,5 +12,6 @@ export interface ElytraDashboard {
   stats: ElytraStats[];
   api: ApiStatus;
   qualifyingListings: number;
+  qualifyingUnits: number;
   generatedAt: Date;
 }

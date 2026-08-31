@@ -222,11 +222,13 @@ components:
           type: ["number", "null"]
         activeListings:
           type: number
+        activeUnits:
+          type: number
         priceChange:
           type: ["number", "null"]
         currency:
           type: string
-      required: [category, lowest, highest, average, median, activeListings, priceChange, currency]
+      required: [category, lowest, highest, average, median, activeListings, activeUnits, priceChange, currency]
     ApiStatus:
       type: object
       properties:
@@ -253,10 +255,12 @@ components:
           $ref: "#/components/schemas/ApiStatus"
         qualifyingListings:
           type: number
+        qualifyingUnits:
+          type: number
         generatedAt:
           type: string
           format: date-time
-      required: [stats, api, qualifyingListings, generatedAt]
+      required: [stats, api, qualifyingListings, qualifyingUnits, generatedAt]
     PriceObservation:
       type: object
       properties:

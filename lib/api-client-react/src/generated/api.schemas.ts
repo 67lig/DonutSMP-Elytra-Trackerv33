@@ -41,6 +41,7 @@ export interface ElytraStats {
   /** @nullable */
   median: number | null;
   activeListings: number;
+  activeUnits: number;
   /** @nullable */
   priceChange: number | null;
   currency: string;
@@ -59,6 +60,7 @@ export interface ElytraDashboard {
   stats: ElytraStats[];
   api: ApiStatus;
   qualifyingListings: number;
+  qualifyingUnits: number;
   generatedAt: string;
 }
 

@@ -617,7 +617,8 @@ export class ElytraMarketService {
     const listings = (await db.select().from(elytraListingsTable))
       .filter((listing) => listing.category === ELYTRA_CATEGORIES[0]);
     const stats = ELYTRA_CATEGORIES.map((category) => {
-      const prices = listings.filter((listing) => listing.category === category)
+      const categoryListings = listings.filter((listing) => listing.category === category);
+      const prices = categoryListings
         .map((listing) => listing.price)
         .sort((a, b) => a - b);
       const median = prices.length % 2
@@ -630,6 +631,7 @@ export class ElytraMarketService {
         average: prices.length ? prices.reduce((sum, price) => sum + price, 0) / prices.length : null,
         median,
         activeListings: prices.length,
+        activeUnits: categoryListings.reduce((sum, listing) => sum + listing.quantity, 0),
         priceChange: null,
         currency: "coins",
       };
@@ -645,6 +647,7 @@ export class ElytraMarketService {
       stats: statsWithChange,
       api: this.getApiStatus(),
       qualifyingListings: listings.length,
+      qualifyingUnits: listings.reduce((sum, listing) => sum + listing.quantity, 0),
       generatedAt: new Date(),
     };
   }
